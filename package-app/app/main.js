@@ -1,10 +1,12 @@
 // HelloDeepseekHarness 独立 App — 主进程
 // 职责:内置 node 拉起 dsh web 服务(端口 8898)、用户数据目录管理、
 //       无边框玻璃窗口、窗口控制 IPC、单实例防重复、关窗即停服。
+// 启动策略:窗口先行(内嵌启动画面),服务后台拉起,就绪即换真实界面。
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const http = require('http');
 const { spawn, spawnSync } = require('child_process');
 
 const APP_NAME = 'HelloDeepseekHarness';
@@ -14,6 +16,37 @@ app.setAppUserModelId('HelloDeepseekHarness');
 // 端口可配置(测试用;正式固定 8898)
 const PORT = Number(process.env.DSH_PORT || 8898);
 const WEB_URL = `http://127.0.0.1:${PORT}`;
+
+// ================= 内嵌启动画面 =================
+// 窗口先于服务就绪显示,消除"点了图标没反应"的空窗期。
+// 透明底 + 居中圆角卡片,与主界面悬浮窗形态一致。
+const SPLASH_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:transparent;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+.card{display:flex;flex-direction:column;align-items:center;gap:16px;padding:44px 60px;border-radius:24px;
+background:rgba(245,242,234,.92);border:1px solid rgba(160,150,130,.35);box-shadow:0 20px 60px rgba(0,0,0,.18)}
+.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6D8BFF,#4D6BFE 60%,#3B56D9);
+box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 2px 8px rgba(77,107,254,.45);position:relative}
+.logo::after{content:'';position:absolute;left:50%;top:50%;width:17px;height:10px;border-radius:50% 50% 45% 45%;
+background:#fff;transform:translate(-50%,calc(-50% - 1px))}
+.t{font-size:14px;font-weight:600;color:#262c3e;letter-spacing:.3px}
+.m{font-size:12px;color:#7a8095;margin:-6px 0 0}
+.bar{width:180px;height:4px;border-radius:99px;background:rgba(38,44,62,.10);overflow:hidden}
+.bar i{display:block;height:100%;width:40%;border-radius:99px;background:#4D6BFE;animation:s 1.1s ease-in-out infinite}
+@keyframes s{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
+.err .m{color:#b3403a}.err .bar i{animation:none;width:100%;background:#c25650}
+</style></head><body><div class="card"><div class="logo"></div>
+<div class="t">HelloDeepseekHarness</div><div class="m" id="msg">正在启动本地服务…</div>
+<div class="bar"><i></i></div></div></body></html>`;
+const SPLASH_URL = 'data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML);
+
+function showSplashError(win) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript(
+    `document.querySelector('.card').classList.add('err');
+     document.getElementById('msg').textContent = '服务启动失败,请重启应用';`
+  ).catch(() => {});
+}
 
 // ================= 路径解析 =================
 // 开发模式:resources 在项目下 runtime-staging/;打包后:process.resourcesPath
@@ -39,64 +72,69 @@ const USER_DATA = udArg ? udArg.slice(15) : (app.isPackaged
 try { app.setPath('userData', USER_DATA); } catch (_) {}
 
 // ================= 服务生命周期 =================
+// 就绪探测用原生 http(回环地址毫秒级返回);此前用 PowerShell 探测,
+// 每次拉起 powershell.exe 要 1~3 秒,是启动慢的最大元凶。
 let serviceProc = null;
 let serviceStarting = false;
 
-function probeService() {
-  try {
-    const r = spawnSync('powershell', ['-NoProfile', '-Command',
-      `try { $r = Invoke-WebRequest -Uri 'http://127.0.0.1:${PORT}/' -UseBasicParsing -TimeoutSec 2; exit 0 } catch { exit 1 }`],
-      { stdio: 'ignore', timeout: 8000 });
-    return r.status === 0;
-  } catch { return false; }
+function probeService(timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/', timeout: timeoutMs }, (res) => {
+      res.resume();
+      finish(true);
+    });
+    req.on('timeout', () => { req.destroy(); finish(false); });
+    req.on('error', () => finish(false));
+  });
 }
 
-function startService() {
-  return new Promise((resolve) => {
-    if (probeService()) { console.log('[svc] already up'); resolve(true); return; }
-    if (serviceStarting) { resolve(false); return; }
-    serviceStarting = true;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    const nodeExe = NODE_EXE();
-    const dshBin = DSH_BIN();
-    if (!fs.existsSync(nodeExe) || !fs.existsSync(dshBin)) {
-      console.error('[svc] runtime missing: node=' + nodeExe + ' dsh=' + dshBin);
-      serviceStarting = false;
-      resolve(false);
-      return;
-    }
+async function startService() {
+  if (await probeService()) { console.log('[svc] already up'); return true; }
+  if (serviceStarting) return false;
+  serviceStarting = true;
 
-    // 确保 DSH_HOME 存在
-    const home = DSH_HOME();
-    try { fs.mkdirSync(home, { recursive: true }); } catch (_) {}
+  const nodeExe = NODE_EXE();
+  const dshBin = DSH_BIN();
+  if (!fs.existsSync(nodeExe) || !fs.existsSync(dshBin)) {
+    console.error('[svc] runtime missing: node=' + nodeExe + ' dsh=' + dshBin);
+    serviceStarting = false;
+    return false;
+  }
 
-    console.log('[svc] starting: ' + nodeExe + ' ' + dshBin + ' web --port ' + PORT);
-    const env = { ...process.env, DSH_HOME: home, DSH_WEB_URL: WEB_URL };
-    // Windows 下隐藏窗口跑服务(无任何命令行窗口闪现)
-    const opts = { env, stdio: 'ignore', windowsHide: true, detached: false };
-    try {
-      serviceProc = spawn(nodeExe, [dshBin, 'web', '--port', String(PORT)], opts);
-    } catch (e) {
-      console.error('[svc] spawn failed: ' + e.message);
-      serviceStarting = false;
-      resolve(false);
-      return;
-    }
-    serviceProc.on('error', (e) => { console.error('[svc] error: ' + e.message); });
-    serviceProc.on('exit', (code) => {
-      console.log('[svc] exited code=' + code);
-      serviceProc = null;
-    });
+  // 确保 DSH_HOME 存在
+  const home = DSH_HOME();
+  try { fs.mkdirSync(home, { recursive: true }); } catch (_) {}
 
-    // 等待服务就绪(最长 30s,冷启动首次较慢)
-    const deadline = Date.now() + 30000;
-    const poll = () => {
-      if (probeService()) { serviceStarting = false; console.log('[svc] ready'); resolve(true); return; }
-      if (Date.now() > deadline) { serviceStarting = false; console.error('[svc] timeout'); resolve(false); return; }
-      setTimeout(poll, 500);
-    };
-    setTimeout(poll, 800);
+  console.log('[svc] starting: ' + nodeExe + ' ' + dshBin + ' web --port ' + PORT);
+  const env = { ...process.env, DSH_HOME: home, DSH_WEB_URL: WEB_URL };
+  // Windows 下隐藏窗口跑服务(无任何命令行窗口闪现)
+  const opts = { env, stdio: 'ignore', windowsHide: true, detached: false };
+  try {
+    serviceProc = spawn(nodeExe, [dshBin, 'web', '--port', String(PORT)], opts);
+  } catch (e) {
+    console.error('[svc] spawn failed: ' + e.message);
+    serviceStarting = false;
+    return false;
+  }
+  serviceProc.on('error', (e) => { console.error('[svc] error: ' + e.message); });
+  serviceProc.on('exit', (code) => {
+    console.log('[svc] exited code=' + code);
+    serviceProc = null;
   });
+
+  // 等待服务就绪(最长 30s;原生探测很便宜,150ms 高频轮询,就绪即刻返回)
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await sleep(150);
+    if (await probeService(800)) { serviceStarting = false; console.log('[svc] ready'); return true; }
+  }
+  serviceStarting = false;
+  console.error('[svc] timeout');
+  return false;
 }
 
 function stopService() {
@@ -163,6 +201,8 @@ if (!gotLock) {
       show: false,
       transparent: true,
       backgroundColor: '#00000000',
+      roundedCorners: false, // 关闭 Win11 系统圆角:系统 ~8px 裁切与 CSS 28px 外框圆角
+                             // 嵌套出第二道弧线,导致圆角下部露出不透明的底色残边
       icon: path.join(__dirname, 'assets', 'deepseek.ico'),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -184,10 +224,10 @@ if (!gotLock) {
       }
     });
 
-    // 冷启动失败自动重载一次
+    // 冷启动失败自动重载一次(仅针对主界面;启动画面是 data URL 不会失败)
     let failCount = 0;
-    mainWindow.webContents.on('did-fail-load', (_e, code) => {
-      if (code === -3 || failCount >= 3) return;
+    mainWindow.webContents.on('did-fail-load', (_e, code, _desc, url) => {
+      if (!String(url || '').startsWith(WEB_URL) || code === -3 || failCount >= 3) return;
       failCount++;
       setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload(); }, 1200);
     });
@@ -209,6 +249,9 @@ if (!gotLock) {
 
     mainWindow.webContents.on('did-finish-load', () => {
       sendState();
+      // 截图模式只认主界面(忽略启动画面的 finish-load)
+      const url = (mainWindow.webContents.getURL() || '');
+      if (!url.startsWith(WEB_URL)) return;
       if (SHOT_PATH) {
         setTimeout(async () => {
           try {
@@ -221,7 +264,8 @@ if (!gotLock) {
       }
     });
 
-    mainWindow.loadURL(WEB_URL);
+    // 先加载启动画面(毫秒级),服务就绪后再换真实界面
+    mainWindow.loadURL(SPLASH_URL);
     return mainWindow;
   }
 
@@ -242,16 +286,18 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
-    // 1. 迁移旧数据(首次启动)
+    // 1. 迁移旧数据(仅首次;之后只是两次存在性检查,不阻塞)
     migrateLegacyData();
-    // 2. 拉起服务
-    const ok = await startService();
-    if (!ok) {
-      console.error('[app] service failed to start');
-      // 仍然开窗口,让用户看到错误页而非白屏
-    }
-    // 3. 开窗口
+    // 2. 先开窗口(显示启动画面),不等服务
     createWindow();
+    // 3. 后台拉起服务,就绪即换真实界面
+    (async () => {
+      let ok = await startService();
+      if (!ok && !app.isQuitting) ok = await startService(); // 重试一次,兜住慢冷启动
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (ok) mainWindow.loadURL(WEB_URL);
+      else showSplashError(mainWindow);
+    })();
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
 
@@ -261,5 +307,5 @@ if (!gotLock) {
     app.quit();
   });
 
-  app.on('before-quit', () => { stopService(); });
+  app.on('before-quit', () => { app.isQuitting = true; stopService(); });
 }

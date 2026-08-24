@@ -1,3 +1,14 @@
+# HelloDeepseekHarness 1.0.2
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.0.2 更新（2026-08-23）
+
+- **大幅优化启动速度**：就绪探测由 PowerShell 改为原生 HTTP（每次探测从 1~3 秒降到毫秒级），轮询加密；窗口先行显示内嵌启动画面，服务后台拉起、就绪即切入主界面，消除点击图标后的长时间空窗
+- **修复圆角下部不透明**：关闭 Windows 11 系统圆角（`roundedCorners: false`），避免系统小半径裁切与界面 28px 外框圆角嵌套出第二道弧线、露出不透明底色残边
+
+---
+
 # HelloDeepseekHarness 1.0.1
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。

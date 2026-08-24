@@ -23,15 +23,14 @@ module.exports = {
     'package.json'
   ],
   // bundled runtime (no node install needed): runtime-staging -> resources/runtime
+  // NOTE: from 必须指向 runtime-staging 根目录,而非 dsh。
+  // electron-builder 的 createFilter 会排除“相对于 from 的根级 node_modules”,
+  // 若 from=dsh 则其 node_modules 是根级、被整个丢弃;from 指向父目录后,
+  // dsh/node_modules 成为子目录,可被完整复制。产物布局仍为 runtime/{node,dsh}。
   extraResources: [
     {
-      from: path.join(__dirname, '..', 'runtime-staging', 'node'),
-      to: 'runtime/node',
-      filter: ['**/*']
-    },
-    {
-      from: path.join(__dirname, '..', 'runtime-staging', 'dsh'),
-      to: 'runtime/dsh',
+      from: path.join(__dirname, '..', 'runtime-staging'),
+      to: 'runtime',
       filter: ['**/*']
     }
   ],

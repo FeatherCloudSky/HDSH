@@ -8,15 +8,17 @@
 
 - **一键安装**：NSIS 安装向导，自动创建桌面快捷方式与开始菜单项，图标为 DeepSeek 鲸鱼 logo（多尺寸 16~256px 内置）
 - **无边框玻璃窗口**：顶部品牌胶囊（带「非官方」标识）+ 右上角悬浮胶囊按钮组（最小化 / 最大化 / 关闭），明暗自适应
+- **秒速启动**：窗口先行显示内嵌启动画面，后台拉起服务、就绪即切入主界面，消除冷启动空窗（v1.0.2）
+- **纯净圆角**：关闭系统原生圆角，悬浮窗四角真正透明、无第二道弧线残边（v1.0.2）
 - **零依赖**：内置 Node.js 与 dsh 运行时，无需预装任何环境
 - **数据保留**：卸载不删除用户数据（会话、配置、插件）
 - **关窗即停**：关闭窗口自动停止后台服务，无残留进程
 
 ## 下载
 
-**最新版本：v1.0.1**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.0.1)）
+**最新版本：v1.0.2**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.0.2)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.0.1.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.0.2.exe`。
 
 | 项 | 要求 |
 |---|---|
@@ -27,7 +29,7 @@
 
 ## 安装
 
-1. 双击 `HelloDeepseekHarness-Setup-1.0.1.exe`，按向导操作；
+1. 双击 `HelloDeepseekHarness-Setup-1.0.2.exe`，按向导操作；
 2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\HelloDeepseekHarness`）；
 3. 向导自动创建桌面快捷方式与开始菜单项；
 4. 安装完成后自动启动应用。
@@ -38,7 +40,7 @@
 
 ## 使用
 
-- 应用自动拉起内置 dsh 服务，监听 `http://127.0.0.1:8898`，就绪后显示主界面（冷启动约 10~30 秒）；
+- 应用自动拉起内置 dsh 服务，监听 `http://127.0.0.1:8898`；窗口秒开（显示启动画面），服务就绪后自动进入主界面；
 - 若检测到旧版数据目录（`%USERPROFILE%\.dsh`），会自动迁移到新位置，用户数据、会话、配置不丢失；
 - 关闭窗口 = 停止服务（无后台残留）。
 

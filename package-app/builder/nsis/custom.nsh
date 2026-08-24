@@ -47,5 +47,8 @@
 
 ; ===== after uninstall: notify user data is kept =====
 !macro customUnInstall
-  MessageBox MB_OK|MB_ICONINFORMATION "HelloDeepseekHarness has been uninstalled.`r`nYour sessions and settings are kept in the user data folder."
+  ; 静默模式(/S)下不弹窗,否则无人点击会卡死卸载流程
+  ${IfNot} ${Silent}
+    MessageBox MB_OK|MB_ICONINFORMATION "HelloDeepseekHarness has been uninstalled.`r`nYour sessions and settings are kept in the user data folder."
+  ${EndIf}
 !macroend
