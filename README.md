@@ -11,6 +11,7 @@
 - **秒速启动**：窗口先行显示内嵌启动画面，后台拉起服务、就绪即切入主界面，消除冷启动空窗（v1.0.2）
 - **鲸鱼 logo**：启动画面与标题栏品牌均使用 DeepSeek 鲸鱼真实图标（v1.0.3）
 - **启动提示**：加载时循环播放趣味提示，渐显渐隐过渡（v1.0.3）
+- **内置更新检测**：设置 → 通用设置 中两个独立按钮，分别检查 WebUI（官方 deepseek-ai 仓库）与本框架（HDSH 仓库）的新版本；发现新版本时询问是否更新，框架更新自动下载安装包到「下载」文件夹（v1.1.0）
 - **纯净圆角**：关闭系统原生圆角，悬浮窗四角真正透明、无第二道弧线残边（v1.0.2）
 - **零依赖**：内置 Node.js 与 dsh 运行时，无需预装任何环境
 - **数据保留**：卸载不删除用户数据（会话、配置、插件）
@@ -18,9 +19,9 @@
 
 ## 下载
 
-**最新版本：v1.0.3**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.0.3)）
+**最新版本：v1.1.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.1.0)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.0.3.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.1.0.exe`。
 
 | 项 | 要求 |
 |---|---|
@@ -31,7 +32,7 @@
 
 ## 安装
 
-1. 双击 `HelloDeepseekHarness-Setup-1.0.3.exe`，按向导操作；
+1. 双击 `HelloDeepseekHarness-Setup-1.1.0.exe`，按向导操作；
 2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\HelloDeepseekHarness`）；
 3. 向导自动创建桌面快捷方式与开始菜单项；
 4. 安装完成后自动启动应用。
@@ -70,6 +71,7 @@ build.bat
 构建说明：
 
 - 环境：Node.js + npm，`builder/` 下安装 `electron-builder` 等依赖；
+- 内置运行时按 `package-app/README.md` 准备；其中 `runtime-addons/dsh-update-check`（内置更新检测客户端包）需复制到 `runtime-staging\dsh\node_modules\` 下；
 - `builder/electron-builder.config.js` 中 `electronDist` 通过环境变量 `ELECTRON_DIST` 指定本地 Electron 目录（避免重新下载），不设置时 electron-builder 自动联网下载，请勿在配置里硬编码本机路径；
 - 网络受限时可通过环境变量 `ELECTRON_BUILDER_BINARIES_MIRROR` 指定 winCodeSign 等二进制下载镜像（如 `https://npmmirror.com/mirrors/electron-builder-binaries/`）；
 - 图标注入依赖 electron-builder 的 rcedit（winCodeSign 包）；非管理员账号下若遇 7za 符号链接解压失败（`SeCreateSymbolicLinkPrivilege`），需要以管理员身份运行或调整 7zip-bin 的调用参数（`-snld` → `-snl-`）。

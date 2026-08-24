@@ -12,6 +12,7 @@ package-app/
 │   ├── afterPack-icon.js     构建后注入鲸鱼图标（rcedit）
 │   ├── build.bat             一键构建脚本
 │   └── nsis/custom.nsh       自定义 NSIS 脚本（OS / VC++ 运行库检查）
+├── runtime-addons/           随包客户端插件源码（dsh-update-check 等，需装入内置运行时）
 ├── runtime-staging/          内置运行时（不入库，见下文准备方法），打包为 resources/runtime
 └── smoke-service.js          冒烟测试：验证 staged 运行时可启动 8898 服务
 ```
@@ -28,6 +29,13 @@ rem    （从 https://nodejs.org 的 zip 发行版中提取即可）
 rem 2) dsh CLI：
 cd runtime-staging\dsh
 npm install @deepseek-ai/dsh@0.1.0-rc.7
+
+rem 3) 内置更新检测客户端包（随包插件，见 runtime-addons/）：
+rem    dsh-update-check 需装入运行时 node_modules，使 dsh web --patch
+rem    挂载的组合行可被解析：
+mkdir runtime-staging\dsh\node_modules\dsh-update-check
+copy runtime-addons\dsh-update-check\* runtime-staging\dsh\node_modules\dsh-update-check\
+xcopy /E /I runtime-addons\dsh-update-check\lib runtime-staging\dsh\node_modules\dsh-update-check\lib
 ```
 
 完成后目录应包含 `runtime-staging\node\node.exe` 与 `runtime-staging\dsh\lib\bin.js`。
@@ -52,5 +60,6 @@ build.bat
 
 ## 版本记录
 
+- **1.1.0**：内置更新检测（设置 → 通用设置）：WebUI 与框架版本检查、发现新版本询问是否更新、框架更新自动下载安装包。Electron 主进程新增 `hdsh` IPC + preload contextBridge（`window.hdsh`）；更新检测 UI 为随包客户端插件 `runtime-addons/dsh-update-check`，经 `dsh web --patch`（`app/hdsh-update-check.patch.yml`）挂载；主进程启动时在 profile 回退 `node_modules` 建立该包的 junction。
 - **1.0.1**：electron-builder 升级至 26.15.3，修复 Windows 11 24H2+ 全新安装时 NSIS 安装器在 System.dll 崩溃的问题（上游 multiUser.nsh 越界读，已在 26.9.0 修复）；custom.nsh 增加 64 位注册表视图修正与静默模式适配。
 - **1.0.0**：首发。

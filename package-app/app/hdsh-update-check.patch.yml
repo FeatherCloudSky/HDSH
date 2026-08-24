@@ -1,0 +1,7 @@
+# HDSH 内置更新检测 — 组合覆盖(经 `dsh web --patch` 追加)
+# 该行把 dsh-update-check 包挂入 web 组合;其浏览器半边经 package.json
+# 的 dsh.client 声明被客户端模块表发现,宿主半边为空插件(特权逻辑在
+# Electron 主进程,经 preload contextBridge 暴露为 window.hdsh)。
+- insert:
+    - id: update-check
+      name: 'dsh-update-check'

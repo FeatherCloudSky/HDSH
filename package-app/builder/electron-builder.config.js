@@ -20,7 +20,8 @@ module.exports = {
     'main.js',
     'preload.js',
     'assets/**/*',
-    'package.json'
+    'package.json',
+    'hdsh-update-check.patch.yml'
   ],
   // bundled runtime (no node install needed): runtime-staging -> resources/runtime
   // NOTE: from 必须指向 runtime-staging 根目录,而非 dsh。
@@ -32,6 +33,12 @@ module.exports = {
       from: path.join(__dirname, '..', 'runtime-staging'),
       to: 'runtime',
       filter: ['**/*']
+    },
+    {
+      // 内置更新检测的组合覆盖文件必须放在 resources/(真实文件)而非 app.asar:
+      // dsh 服务由纯 node.exe 拉起,无法读取 asar 内部文件
+      from: path.join(__dirname, '..', 'app', 'hdsh-update-check.patch.yml'),
+      to: 'hdsh-update-check.patch.yml'
     }
   ],
   // reuse local Electron binary to avoid re-download (see electronDist above)

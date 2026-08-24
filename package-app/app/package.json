@@ -1,7 +1,7 @@
 {
   "name": "hello-deepseek-harness",
   "productName": "HelloDeepseekHarness",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "HelloDeepseekHarness — DeepSeek Harness WebUI 非官方桌面封装",
   "main": "main.js",
   "author": "FeatherCloudSky",

@@ -1,0 +1,27 @@
+{
+  "name": "dsh-update-check",
+  "version": "1.1.0",
+  "description": "HDSH 内置更新检测:设置→通用设置 检查 WebUI 与框架版本,发现新版本时询问是否更新",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT"
+}

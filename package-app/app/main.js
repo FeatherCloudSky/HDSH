@@ -2,7 +2,7 @@
 // 职责:内置 node 拉起 dsh web 服务(端口 8898)、用户数据目录管理、
 //       无边框玻璃窗口、窗口控制 IPC、单实例防重复、关窗即停服。
 // 启动策略:窗口先行(内嵌启动画面),服务后台拉起,就绪即换真实界面。
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -74,6 +74,70 @@ function runtimeDir() {
 const NODE_EXE = () => path.join(runtimeDir(), 'node', 'node.exe');
 const DSH_BIN = () => path.join(runtimeDir(), 'dsh', 'lib', 'bin.js');
 
+// ================= 内置更新检测 =================
+// --patch 覆盖文件:向 dsh 组合追加本应用内置的更新检测插件行(dsh-update-check)。
+// 打包后该文件经 electron-builder extraResources 落到 resources/(真实文件),
+// 因为 dsh 服务由纯 node.exe 拉起、无法读取 app.asar 内部文件。
+const HDSH_PATCH_FILE = () => app.isPackaged
+  ? path.join(process.resourcesPath, 'hdsh-update-check.patch.yml')
+  : path.join(__dirname, 'hdsh-update-check.patch.yml');
+
+// 框架版本:应用自身 package.json(打包后为 app.asar/package.json)
+function frameworkVersion() {
+  try { return require('./package.json').version; } catch (_) { return null; }
+}
+// WebUI 版本:内置运行时中官方 @deepseek-ai/dsh-web-app 的版本
+function webuiVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(
+      path.join(runtimeDir(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh-web-app', 'package.json'), 'utf8'));
+    return (pkg && pkg.version) || null;
+  } catch (_) { return null; }
+}
+// 下载框架安装包到「下载」文件夹并打开该文件夹(PowerShell 下载,自动跟随重定向)
+// 确保 dsh-update-check 包在 profile 回退 node_modules 中可见
+// (web profile 的模块解析路径为 profiles/web → profiles/node_modules,
+//  dsh 在此维护指向运行时 node_modules 的 junction 回退;首次启动建链,
+//  失败时退化为复制)
+function ensureUpdateCheckInProfile() {
+  try {
+    const src = path.join(runtimeDir(), 'dsh', 'node_modules', 'dsh-update-check');
+    if (!fs.existsSync(src)) return;
+    const nm = path.join(DSH_HOME(), 'profiles', 'node_modules');
+    const link = path.join(nm, 'dsh-update-check');
+    if (fs.existsSync(link)) return;
+    fs.mkdirSync(nm, { recursive: true });
+    try {
+      fs.symlinkSync(src, link, 'junction');
+    } catch (_) {
+      try { fs.cpSync(src, link, { recursive: true }); } catch (__) {}
+    }
+  } catch (_) {}
+}
+
+// 下载框架安装包到「下载」文件夹并打开该文件夹(PowerShell 下载,自动跟随重定向)
+function downloadFramework(url, fileName) {
+  return new Promise((resolve) => {
+    if (!url || !/^https?:/i.test(String(url))) return resolve({ ok: false, message: '缺少安装包下载地址' });
+    const safe = String(fileName || 'HelloDeepseekHarness-Setup.exe').replace(/[^0-9A-Za-z.\-() ]/g, '');
+    const script = "$ProgressPreference='SilentlyContinue'; "
+      + "$dl=Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'; "
+      + 'if(-not(Test-Path $dl)){New-Item -ItemType Directory -Force -Path $dl|Out-Null}; '
+      + "$u='" + String(url).replace(/'/g, "''") + "'; "
+      + "$f=Join-Path $dl '" + safe + "'; "
+      + 'Invoke-WebRequest -Uri $u -OutFile $f -UseBasicParsing -TimeoutSec 300';
+    const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, stdio: 'ignore' });
+    proc.on('error', (e) => resolve({ ok: false, message: '启动 PowerShell 失败: ' + e.message }));
+    proc.on('exit', (code) => {
+      if (code !== 0) return resolve({ ok: false, message: '下载失败(退出码 ' + code + ')' });
+      try {
+        spawn('explorer.exe', [path.join(os.homedir(), 'Downloads')], { windowsHide: true, stdio: 'ignore' });
+      } catch (_) {}
+      resolve({ ok: true, message: '安装包已下载到「下载」文件夹(' + safe + ')并已打开。请关闭应用后运行安装程序完成升级。' });
+    });
+  });
+}
+
 // 用户数据目录(会话/设置/插件),独立于安装目录 → 覆盖安装/卸载都不丢
 // 开发模式:项目下 dev-data/ 便于测试;打包后:%APPDATA%\HelloDeepseekHarness\dsh-home
 const DSH_HOME = () => {
@@ -126,12 +190,22 @@ async function startService() {
   const home = DSH_HOME();
   try { fs.mkdirSync(home, { recursive: true }); } catch (_) {}
 
+  // 内置更新检测:在 profile 回退 node_modules 建立包链接
+  ensureUpdateCheckInProfile();
+
   console.log('[svc] starting: ' + nodeExe + ' ' + dshBin + ' web --port ' + PORT);
   const env = { ...process.env, DSH_HOME: home, DSH_WEB_URL: WEB_URL };
   // Windows 下隐藏窗口跑服务(无任何命令行窗口闪现)
   const opts = { env, stdio: 'ignore', windowsHide: true, detached: false };
+  // 追加 --patch 覆盖:内置更新检测插件行(文件缺失时跳过,兼容纯官方运行时)。
+  // 注意 --patch 必须放在 --port 之前:web 子命令的 passThroughOptions 会让
+  // 位置参数之后的选项透传给 web 应用解析(--port 由 web 应用解析,先出现会
+  // 把 8898 当作位置参数,导致其后的 --patch 被透传而报 unknown option)。
+  const svcArgs = [dshBin, 'web'];
+  if (fs.existsSync(HDSH_PATCH_FILE())) svcArgs.push('--patch', HDSH_PATCH_FILE());
+  svcArgs.push('--port', String(PORT));
   try {
-    serviceProc = spawn(nodeExe, [dshBin, 'web', '--port', String(PORT)], opts);
+    serviceProc = spawn(nodeExe, svcArgs, opts);
   } catch (e) {
     console.error('[svc] spawn failed: ' + e.message);
     serviceStarting = false;
@@ -294,6 +368,20 @@ if (!gotLock) {
     else mainWindow.maximize();
   });
   ipcMain.on('win:close', () => { if (mainWindow) mainWindow.close(); });
+
+  // ---- 内置更新检测 IPC(preload 经 contextBridge 暴露为 window.hdsh) ----
+  ipcMain.handle('hdsh:get-versions', () => ({ framework: frameworkVersion(), webui: webuiVersion() }));
+  ipcMain.handle('hdsh:download-framework', (_e, payload) =>
+    downloadFramework(payload && payload.url, payload && payload.fileName));
+  ipcMain.handle('hdsh:open-url', async (_e, url) => {
+    if (!url || !/^https?:/i.test(String(url))) return { ok: false, message: '非法链接' };
+    try {
+      await shell.openExternal(String(url));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: String((e && e.message) || e) };
+    }
+  });
 
   app.on('second-instance', () => {
     if (mainWindow) {
