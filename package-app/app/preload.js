@@ -10,7 +10,22 @@ contextBridge.exposeInMainWorld('hdsh', {
   // 下载框架安装包到「下载」文件夹并打开:{ url, fileName } → { ok, message }
   downloadFramework: (payload) => ipcRenderer.invoke('hdsh:download-framework', payload),
   // 用系统默认浏览器打开链接:url → { ok, message }
-  openUrl: (url) => ipcRenderer.invoke('hdsh:open-url', url)
+  openUrl: (url) => ipcRenderer.invoke('hdsh:open-url', url),
+  // ---- 一键自动更新(electron-updater) ----
+  // 检查更新:触发 checkForUpdates,结果经 onUpdateEvent 回报
+  checkUpdate: () => ipcRenderer.invoke('hdsh:updater-check'),
+  // 下载更新(检查到新版本后调用);进度经 download-progress 事件回报
+  downloadUpdate: () => ipcRenderer.invoke('hdsh:updater-download'),
+  // 安装并重启(下载完成后调用)→ { ok }
+  installUpdate: () => ipcRenderer.invoke('hdsh:updater-install'),
+  // 订阅更新事件:cb({ type, ... }) → 返回退订函数
+  // type: checking-for-update | update-available | update-not-available
+  //       | download-progress | update-downloaded | error
+  onUpdateEvent: (cb) => {
+    const listener = (_e, data) => { try { cb(data); } catch (_) {} };
+    ipcRenderer.on('hdsh:updater-event', listener);
+    return () => ipcRenderer.removeListener('hdsh:updater-event', listener);
+  }
 });
 
 // 鲸鱼 logo(内嵌 base64;沙箱 preload 无法读取文件系统)

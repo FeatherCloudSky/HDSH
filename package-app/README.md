@@ -60,6 +60,7 @@ build.bat
 
 ## 版本记录
 
+- **1.2.0**：一键自动更新。主进程集成 electron-updater（check/download/install IPC + 事件转发），preload 扩展 `window.hdsh`（checkUpdate / downloadUpdate / installUpdate / onUpdateEvent）；客户端插件 `dsh-update-check` 升级为事件驱动的状态机 UI（转圈 + 进度条 + 提示）；app 依赖新增 electron-updater；builder 配置新增 `publish: github`（构建生成 latest.yml + blockmap，发布时需随安装包一并上传）。
 - **1.1.0**：内置更新检测（设置 → 通用设置）：WebUI 与框架版本检查、发现新版本询问是否更新、框架更新自动下载安装包。Electron 主进程新增 `hdsh` IPC + preload contextBridge（`window.hdsh`）；更新检测 UI 为随包客户端插件 `runtime-addons/dsh-update-check`，经 `dsh web --patch`（`app/hdsh-update-check.patch.yml`）挂载；主进程启动时在 profile 回退 `node_modules` 建立该包的 junction。
 - **1.0.1**：electron-builder 升级至 26.15.3，修复 Windows 11 24H2+ 全新安装时 NSIS 安装器在 System.dll 崩溃的问题（上游 multiUser.nsh 越界读，已在 26.9.0 修复）；custom.nsh 增加 64 位注册表视图修正与静默模式适配。
 - **1.0.0**：首发。

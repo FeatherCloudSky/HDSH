@@ -8,6 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const http = require('http');
 const { spawn, spawnSync } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 
 const APP_NAME = 'HelloDeepseekHarness';
 app.setName(APP_NAME);
@@ -382,6 +383,42 @@ if (!gotLock) {
       return { ok: false, message: String((e && e.message) || e) };
     }
   });
+
+  // ---- 一键自动更新(electron-updater,发布源为 GitHub Releases 的 latest.yml) ----
+  // 仅打包版可用;事件统一转发给渲染进程,由设置页 UI 展示转圈/提示/进度。
+  autoUpdater.autoDownload = false;         // 用户点击「立即更新」后才下载
+  autoUpdater.autoInstallOnAppQuit = false; // 更新由 UI 显式触发
+  {
+    const sendUpdateEvent = (type, data) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('hdsh:updater-event', Object.assign({ type }, data || {}));
+      }
+    };
+    autoUpdater.on('checking-for-update', () => sendUpdateEvent('checking-for-update'));
+    autoUpdater.on('update-available', (info) => sendUpdateEvent('update-available', { version: info && info.version }));
+    autoUpdater.on('update-not-available', (info) => sendUpdateEvent('update-not-available', { version: info && info.version }));
+    autoUpdater.on('download-progress', (p) => sendUpdateEvent('download-progress', {
+      percent: Math.max(0, Math.min(100, Math.round((p && p.percent) || 0))),
+      transferred: p && p.transferred,
+      total: p && p.total,
+      bytesPerSecond: p && p.bytesPerSecond
+    }));
+    autoUpdater.on('update-downloaded', (info) => sendUpdateEvent('update-downloaded', { version: info && info.version }));
+    autoUpdater.on('error', (err) => sendUpdateEvent('error', { message: String((err && err.message) || err) }));
+
+    ipcMain.handle('hdsh:updater-check', () => {
+      if (!app.isPackaged) return sendUpdateEvent('error', { message: '自动更新仅在安装版中可用(开发模式跳过)' });
+      return autoUpdater.checkForUpdates().catch((e) =>
+        sendUpdateEvent('error', { message: String((e && e.message) || e) }));
+    });
+    ipcMain.handle('hdsh:updater-download', () =>
+      autoUpdater.downloadUpdate().catch((e) =>
+        sendUpdateEvent('error', { message: String((e && e.message) || e) })));
+    ipcMain.handle('hdsh:updater-install', () => {
+      autoUpdater.quitAndInstall();
+      return { ok: true };
+    });
+  }
 
   app.on('second-instance', () => {
     if (mainWindow) {

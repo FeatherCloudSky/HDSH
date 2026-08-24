@@ -1,10 +1,11 @@
 // HDSH 内置更新检测 — 浏览器半边
-// 注册 设置→通用设置 的「更新检测」行:两个独立按钮分别检查 WebUI
-// (官方 deepseek-ai/deepseek-harness 仓库)与本框架(FeatherCloudSky/HDSH)
-// 的新版本;发现新版本时询问用户是否更新。
-// 当前版本经 window.hdsh.getVersions()(Electron 主进程读取);
-// 最新版本由本页面 fetch GitHub/npm(官方 API 均开放 CORS);
-// 更新动作经 window.hdsh.downloadFramework / openUrl。
+// 设置 → 通用设置的「更新检测」栏目:
+//  - 框架(本应用):一键自动更新。点击「检查框架更新」→ 发现新版本 → 点击
+//    「立即更新」→ 自动下载(转圈 + 进度条 + 提示)→ 自动安装 → 应用自动重启,
+//    全程无需用户手动前往官网下载。驱动:Electron 主进程 electron-updater,
+//    事件经 window.hdsh.onUpdateEvent 回报。
+//  - WebUI(官方 DeepSeek Harness 界面):检测官方仓库最新版本并打开发布页
+//    (WebUI 组件随框架安装包分发,随框架更新一并升级)。
 window.__ModuleLoader__.load({
 	id: "dsh-update-check",
 	factory: (require) => {
@@ -12,7 +13,7 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		let react = require("react");
 
-		// ---- 样式(注入 <style>,与其它随包插件一致) ----
+		// ---- 样式 ----
 		const CSS = `
 .updchk-row{display:flex;flex-direction:column;gap:10px;padding:10px 0;width:100%;box-sizing:border-box}
 .updchk-head{display:flex;flex-direction:column;gap:2px}
@@ -25,7 +26,7 @@ window.__ModuleLoader__.load({
 .updchk-repo{font-size:11px;color:var(--dsw-alias-label-secondary,#6b7280)}
 .updchk-note{font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-secondary,#6b7280)}
 .updchk-vers{font-size:11.5px;color:var(--dsw-alias-label-secondary,#6b7280)}
-.updchk-status{font-size:12px;color:var(--dsw-alias-label-secondary,#6b7280)}
+.updchk-status{font-size:12px;color:var(--dsw-alias-label-secondary,#6b7280);display:flex;align-items:center;gap:8px}
 .updchk-ok{color:var(--dsw-alias-state-success-primary,#16a34a)}
 .updchk-err{color:var(--dsw-alias-state-error-primary,#dc2626)}
 .updchk-warn{color:var(--dsw-alias-state-warn-primary,#d97706)}
@@ -36,6 +37,12 @@ window.__ModuleLoader__.load({
 .updchk-btn-primary:hover{color:#fff;opacity:.9}
 .updchk-confirm{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px dashed var(--dsw-alias-state-warn-primary,#d97706);border-radius:8px;padding:8px 10px;background:rgba(217,119,6,.06)}
 .updchk-link{background:none;border:none;padding:0;font-size:11.5px;color:var(--dsw-alias-brand-primary,#4d6bfe);cursor:pointer;text-decoration:underline;align-self:flex-start}
+.updchk-spinner{width:14px;height:14px;border:2px solid var(--dsw-alias-border-l2,#d1d5db);border-top-color:var(--dsw-alias-brand-primary,#4d6bfe);border-radius:50%;display:inline-block;animation:updchk-spin .8s linear infinite;flex:none}
+.updchk-spinner-big{width:18px;height:18px;border-width:2.5px}
+@keyframes updchk-spin{to{transform:rotate(360deg)}}
+.updchk-progress{height:6px;border-radius:99px;background:var(--dsw-alias-border-l1,#e5e7eb);overflow:hidden;margin-top:4px}
+.updchk-progress i{display:block;height:100%;border-radius:99px;background:var(--dsw-alias-brand-primary,#4d6bfe);transition:width .2s ease}
+.updchk-tip{font-size:11px;color:var(--dsw-alias-label-secondary,#6b7280)}
 `;
 		(function () {
 			const tagId = "dsh-update-check/style";
@@ -48,7 +55,7 @@ window.__ModuleLoader__.load({
 			}
 		})();
 
-		// ---- 版本对比(兼容 v/ver/dsh- 前缀与 rc 预发布段) ----
+		// ---- 版本对比(兼容 v/ver/dsh- 前缀与 rc 预发布段;用于 WebUI 检查) ----
 		function parseVersion(raw) {
 			if (typeof raw !== "string") return null;
 			const s = raw.trim().replace(/^[^0-9]*/, "");
@@ -83,7 +90,7 @@ window.__ModuleLoader__.load({
 			return 0;
 		}
 
-		// ---- 网络(浏览器 fetch;GitHub/npm 官方 API 开放 CORS) ----
+		// ---- 网络(浏览器 fetch;GitHub/npm 官方 API 开放 CORS;仅 WebUI 检查使用) ----
 		async function fetchJson(url) {
 			try {
 				const res = await fetch(url, { headers: { "User-Agent": "dsh-update-check" } });
@@ -94,18 +101,14 @@ window.__ModuleLoader__.load({
 			}
 		}
 
-		async function currentVersions() {
-			try {
-				if (typeof window !== "undefined" && window.hdsh && window.hdsh.getVersions) {
-					const v = await window.hdsh.getVersions();
-					return { webui: (v && v.webui) || null, framework: (v && v.framework) || null };
-				}
-			} catch (e) { /* fallthrough */ }
-			return { webui: null, framework: null };
-		}
-
 		async function checkWebui() {
-			const cur = await currentVersions();
+			let current = null;
+			try {
+				if (window && window.hdsh && window.hdsh.getVersions) {
+					const v = await window.hdsh.getVersions();
+					current = (v && v.webui) || null;
+				}
+			} catch (e) { /* ignore */ }
 			let latest = null;
 			let source = "";
 			let error = null;
@@ -126,104 +129,78 @@ window.__ModuleLoader__.load({
 				if (!latest) error = (r1.error || "未获取到最新版本");
 			}
 			return {
-				target: "webui",
-				current: cur.webui,
+				current: current,
 				latest: latest,
 				source: source,
-				updateAvailable: !!(latest && cur.webui && compareVersions(latest, cur.webui) > 0),
+				updateAvailable: !!(latest && current && compareVersions(latest, current) > 0),
 				error: error,
 				repoUrl: "https://github.com/deepseek-ai/deepseek-harness/tags",
 				repoLabel: "官方仓库"
 			};
 		}
 
-		async function checkFramework() {
-			const cur = await currentVersions();
-			let latest = null;
-			let assetUrl = null;
-			let fileName = null;
-			let error = null;
-			const r1 = await fetchJson("https://api.github.com/repos/FeatherCloudSky/HDSH/releases/latest");
-			if (r1.ok && r1.data && r1.data.tag_name) {
-				latest = String(r1.data.tag_name);
-				const asset = (r1.data.assets || []).find((a) => a && a.browser_download_url);
-				if (asset) {
-					assetUrl = String(asset.browser_download_url);
-					fileName = String(asset.name || "").split("/").pop() || null;
-				}
-			}
-			if (!latest) {
-				const r2 = await fetchJson("https://api.github.com/repos/FeatherCloudSky/HDSH/tags?per_page=10");
-				if (r2.ok && Array.isArray(r2.data) && r2.data[0] && r2.data[0].name) {
-					latest = String(r2.data[0].name);
-					const ver = latest.replace(/^[^0-9]*/, "");
-					fileName = "HelloDeepseekHarness-Setup-" + ver + ".exe";
-					assetUrl = "https://github.com/FeatherCloudSky/HDSH/releases/download/" + latest + "/" + fileName;
-				}
-				if (!latest) error = (r1.error || "未获取到最新版本");
-			}
-			return {
-				target: "framework",
-				current: cur.framework,
-				latest: latest,
-				source: "GitHub Releases",
-				updateAvailable: !!(latest && cur.framework && compareVersions(latest, cur.framework) > 0),
-				error: error,
-				assetUrl: assetUrl,
-				fileName: fileName,
-				repoUrl: "https://github.com/FeatherCloudSky/HDSH/releases/latest",
-				repoLabel: "HDSH 发布页"
-			};
+		// ---- 框架一键自动更新:订阅 electron-updater 事件 → 组件状态机 ----
+		function subscribeUpdater(setState) {
+			if (!window || !window.hdsh || !window.hdsh.onUpdateEvent) return () => {};
+			return window.hdsh.onUpdateEvent((ev) => {
+				setState((prev) => {
+					switch (ev.type) {
+						case "checking-for-update":
+							return { ...prev, phase: "checking", error: null };
+						case "update-available":
+							return { ...prev, phase: "checked", latest: ev.version, error: null };
+						case "update-not-available":
+							return { ...prev, phase: "checked", latest: null, error: null };
+						case "download-progress":
+							return { ...prev, phase: "downloading", percent: typeof ev.percent === "number" ? ev.percent : prev.percent, error: null };
+						case "update-downloaded":
+							// 下载完成 → 提示后自动安装并重启
+							setTimeout(() => {
+								if (window.hdsh && window.hdsh.installUpdate) window.hdsh.installUpdate().catch(() => {});
+							}, 1800);
+							return { ...prev, phase: "installing", error: null };
+						case "error":
+							return { ...prev, phase: "error", error: ev.message || "更新失败" };
+						default:
+							return prev;
+					}
+				});
+			});
 		}
 
-		// ---- 动作 ----
-		async function performFramework(result) {
-			if (!result.assetUrl) return { ok: false, message: "缺少安装包下载地址" };
-			if (window && window.hdsh && window.hdsh.downloadFramework) {
-				try {
-					return await window.hdsh.downloadFramework({ url: result.assetUrl, fileName: result.fileName });
-				} catch (e) {
-					return { ok: false, message: String((e && e.message) || e) };
-				}
+		function doCheckFramework(setState) {
+			setState({ phase: "checking", current: null, latest: null, percent: 0, error: null, dismissed: false });
+			if (window && window.hdsh && window.hdsh.getVersions) {
+				window.hdsh.getVersions().then((v) => {
+					setState((prev) => ({ ...prev, current: (v && v.framework) || null }));
+				}).catch(() => {});
 			}
-			return { ok: false, message: "下载通道不可用,请手动访问 " + result.repoUrl };
-		}
-		async function performWebui(result) {
-			const url = result.repoUrl || "https://github.com/deepseek-ai/deepseek-harness/tags";
-			if (window && window.hdsh && window.hdsh.openUrl) {
-				try {
-					const r = await window.hdsh.openUrl(url);
-					if (r && r.ok) return { ok: true, message: "已打开官方仓库标签页。提示:本应用的 WebUI 组件随框架安装包分发,通常通过「检查框架更新 → 更新框架」获得新版 WebUI。" };
-					return { ok: false, message: ((r && r.message) || "打开页面失败") + ";请手动访问 " + url };
-				} catch (e) {
-					return { ok: false, message: String((e && e.message) || e) };
-				}
+			if (window && window.hdsh && window.hdsh.checkUpdate) {
+				window.hdsh.checkUpdate().catch((e) => {
+					setState((prev) => ({ ...prev, phase: "error", error: String((e && e.message) || e) }));
+				});
+			} else {
+				setState((prev) => ({ ...prev, phase: "error", error: "更新通道不可用" }));
 			}
-			return { ok: false, message: "打开页面失败;请手动访问 " + url };
 		}
 
-		// ---- 组件 ----
-		function doCheck(kind, setState) {
+		function doUpdateFramework(setState) {
+			setState((prev) => ({ ...prev, phase: "downloading", percent: 0, error: null }));
+			if (window.hdsh && window.hdsh.downloadUpdate) {
+				window.hdsh.downloadUpdate().catch((e) => {
+					setState((prev) => ({ ...prev, phase: "error", error: String((e && e.message) || e) }));
+				});
+			}
+		}
+
+		function doCheckWebui(setState) {
 			setState({ phase: "checking", result: null, error: null, msg: null, dismissed: false });
-			const task = kind === "webui" ? checkWebui() : checkFramework();
-			task.then((res) => {
+			checkWebui().then((res) => {
 				if (!res) return setState({ phase: "error", result: null, error: "无响应", msg: null, dismissed: false });
 				if (res.error) return setState({ phase: "error", result: res, error: res.error, msg: null, dismissed: false });
 				setState({ phase: "checked", result: res, error: null, msg: null, dismissed: false });
 			}).catch((e) => {
 				setState({ phase: "error", result: null, error: String((e && e.message) || e), msg: null, dismissed: false });
-			});
-		}
-
-		function doPerform(kind, state, setState) {
-			const result = state.result;
-			setState({ phase: "updating", result: result, error: null, msg: null, dismissed: false });
-			const task = kind === "framework" ? performFramework(result) : performWebui(result);
-			task.then((r) => {
-				if (r && r.ok) setState({ phase: "done", result: result, error: null, msg: r.message || "更新完成", dismissed: false });
-				else setState({ phase: "done", result: result, error: (r && r.message) || "更新失败", msg: null, dismissed: false });
-			}).catch((e) => {
-				setState({ phase: "done", result: result, error: String((e && e.message) || e), msg: null, dismissed: false });
 			});
 		}
 
@@ -233,39 +210,84 @@ window.__ModuleLoader__.load({
 			}
 		}
 
-		function renderGroup(kind, state, setState) {
+		// ---- 框架组渲染(转圈 + tips + 进度条) ----
+		function renderFrameworkGroup(state, setState) {
 			const h = react.createElement;
-			const meta = kind === "webui"
-				? {
-					label: "WebUI(官方 DeepSeek Harness 界面)",
-					repo: "官方仓库:github.com/deepseek-ai/deepseek-harness",
-					note: "WebUI 为官方 DeepSeek Harness 的浏览器界面组件,随本框架安装包一起分发。",
-					btn: "检查 WebUI 更新"
-				}
-				: {
-					label: "本框架(HelloDeepseekHarness / HDSH)",
-					repo: "仓库:github.com/FeatherCloudSky/HDSH",
-					note: "本框架为 HelloDeepseekHarness 桌面应用,更新以安装包形式发布在 HDSH 仓库。",
-					btn: "检查框架更新"
-				};
-			const result = state.result;
-			const busy = state.phase === "checking" || state.phase === "updating";
+			const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
 			const els = [];
-
 			els.push(h("div", { className: "updchk-line" },
 				h("div", { className: "updchk-info" },
-					h("div", { className: "updchk-name" }, meta.label),
-					h("div", { className: "updchk-repo" }, meta.repo)
+					h("div", { className: "updchk-name" }, "本框架(HelloDeepseekHarness / HDSH)"),
+					h("div", { className: "updchk-repo" }, "发布源:github.com/FeatherCloudSky/HDSH Releases")
 				),
-				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheck(kind, setState) },
-					state.phase === "checking" ? "检查中…" : meta.btn)
+				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckFramework(setState) },
+					state.phase === "checking" ? "检查中…" : "检查框架更新")
 			));
-			els.push(h("div", { className: "updchk-note" }, meta.note));
+			els.push(h("div", { className: "updchk-note" }, "一键自动更新:发现新版本后点击「立即更新」,自动下载、安装并重启应用,无需手动前往官网下载。"));
 
 			if (state.phase === "idle") {
 				els.push(h("div", { className: "updchk-status" }, "未检查 · 点击上方按钮开始"));
 			} else if (state.phase === "checking") {
-				els.push(h("div", { className: "updchk-status" }, "正在检查更新…"));
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner" }),
+					"正在检查更新…"));
+			} else if (state.phase === "checked") {
+				const cur = state.current ? "v" + state.current : "未知";
+				if (state.latest) {
+					els.push(h("div", { className: "updchk-vers" }, "当前版本:" + cur + "　·　最新版本:v" + state.latest));
+					if (!state.dismissed) {
+						els.push(h("div", { className: "updchk-confirm" },
+							h("span", { className: "updchk-warn" }, "⚠ 发现新版本,是否立即更新?"),
+							h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doUpdateFramework(setState) }, "立即更新"),
+							h("button", { className: "updchk-btn", onClick: () => setState((prev) => ({ ...prev, dismissed: true })) }, "暂不更新")
+						));
+					} else {
+						els.push(h("div", { className: "updchk-status updchk-warn" }, "已忽略本次更新提醒(可再次点击按钮重新检测)"));
+					}
+				} else {
+					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已是最新版本 " + cur));
+				}
+			} else if (state.phase === "downloading") {
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner updchk-spinner-big" }),
+					h("span", null, "正在下载更新… " + (typeof state.percent === "number" ? state.percent + "%" : ""))));
+				els.push(h("div", { className: "updchk-progress" },
+					h("i", { style: { width: (typeof state.percent === "number" ? state.percent : 0) + "%" } })));
+				els.push(h("div", { className: "updchk-tip" }, "下载期间请保持应用开启,可继续使用其它功能"));
+			} else if (state.phase === "installing") {
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner updchk-spinner-big" }),
+					h("span", null, "下载完成,正在安装…")));
+				els.push(h("div", { className: "updchk-tip" }, "安装完成后应用将自动重启,请稍候"));
+			} else if (state.phase === "error") {
+				els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "更新失败")));
+				els.push(h("button", { className: "updchk-link", onClick: () => openRepo({ repoUrl: "https://github.com/FeatherCloudSky/HDSH/releases/latest", repoLabel: "HDSH 发布页" }) }, "打开 HDSH 发布页 ↗"));
+			}
+			return h("div", { className: "updchk-group" }, els);
+		}
+
+		// ---- WebUI 组渲染 ----
+		function renderWebuiGroup(state, setState) {
+			const h = react.createElement;
+			const busy = state.phase === "checking";
+			const result = state.result;
+			const els = [];
+			els.push(h("div", { className: "updchk-line" },
+				h("div", { className: "updchk-info" },
+					h("div", { className: "updchk-name" }, "WebUI(官方 DeepSeek Harness 界面)"),
+					h("div", { className: "updchk-repo" }, "官方仓库:github.com/deepseek-ai/deepseek-harness")
+				),
+				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckWebui(setState) },
+					state.phase === "checking" ? "检查中…" : "检查 WebUI 更新")
+			));
+			els.push(h("div", { className: "updchk-note" }, "WebUI 为官方 DeepSeek Harness 的浏览器界面组件,随本框架安装包一起分发,随框架更新一并升级。"));
+
+			if (state.phase === "idle") {
+				els.push(h("div", { className: "updchk-status" }, "未检查 · 点击上方按钮开始"));
+			} else if (state.phase === "checking") {
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner" }),
+					"正在检查更新…"));
 			} else if (state.phase === "error") {
 				els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "检查失败")));
 				if (result && result.repoUrl) {
@@ -276,42 +298,29 @@ window.__ModuleLoader__.load({
 				const lat = result && result.latest ? result.latest : "未知";
 				els.push(h("div", { className: "updchk-vers" }, "当前版本:" + cur + "　·　最新版本:" + lat + (result && result.source ? "(" + result.source + ")" : "")));
 				if (result && result.updateAvailable) {
-					if (!state.dismissed) {
-						els.push(h("div", { className: "updchk-confirm" },
-							h("span", { className: "updchk-warn" }, "⚠ 发现新版本:" + cur + " → " + lat + ",是否立即更新?"),
-							h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doPerform(kind, state, setState) }, "立即更新"),
-							h("button", { className: "updchk-btn", onClick: () => setState({ phase: "checked", result: result, dismissed: true }) }, "暂不更新")
-						));
-					} else {
-						els.push(h("div", { className: "updchk-status updchk-warn" }, "已忽略本次更新提醒(可再次点击按钮重新检测)"));
-					}
+					els.push(h("div", { className: "updchk-status updchk-warn" }, "⚠ 官方 WebUI 有新版本,将随下次框架更新一并升级"));
 				} else {
 					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已是最新版本"));
 				}
 				if (result && result.repoUrl) {
 					els.push(h("button", { className: "updchk-link", onClick: () => openRepo(result) }, "打开" + (result.repoLabel || "仓库") + " ↗"));
 				}
-			} else if (state.phase === "updating") {
-				els.push(h("div", { className: "updchk-status" }, kind === "framework" ? "正在更新…(下载安装包可能需要一些时间,请勿关闭应用)" : "正在打开官方页面…"));
-			} else if (state.phase === "done") {
-				if (state.msg) els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ " + state.msg));
-				else els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "更新失败")));
 			}
-
 			return h("div", { className: "updchk-group" }, els);
 		}
 
 		function UpdateRow() {
 			const h = react.createElement;
+			const [framework, setFramework] = react.useState({ phase: "idle", current: null, latest: null, percent: 0, error: null, dismissed: false });
 			const [webui, setWebui] = react.useState({ phase: "idle", result: null, error: null, msg: null, dismissed: false });
-			const [framework, setFramework] = react.useState({ phase: "idle", result: null, error: null, msg: null, dismissed: false });
+			react.useEffect(() => subscribeUpdater(setFramework), []);
 			return h("div", { className: "updchk-row" },
 				h("div", { className: "updchk-head" },
 					h("div", { className: "updchk-title" }, "更新检测"),
-					h("div", { className: "updchk-desc" }, "分别检测 WebUI(官方 DeepSeek Harness 仓库)与本框架(FeatherCloudSky/HDSH)的新版本;发现新版本时会询问是否更新。")
+					h("div", { className: "updchk-desc" }, "一键自动更新框架;检测 WebUI 官方最新版本。发现新版本时会询问是否更新。")
 				),
-				renderGroup("webui", webui, setWebui),
-				renderGroup("framework", framework, setFramework)
+				renderFrameworkGroup(framework, setFramework),
+				renderWebuiGroup(webui, setWebui)
 			);
 		}
 

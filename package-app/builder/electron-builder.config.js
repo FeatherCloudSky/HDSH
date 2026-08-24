@@ -9,6 +9,12 @@ module.exports = {
   appId: 'io.github.feathercloudsky.hdsh',
   productName: 'HelloDeepseekHarness',
   copyright: 'Copyright (c) 2026 FeatherCloudSky',
+  // 自动更新发布源:GitHub Releases(latest.yml + blockmap 由构建生成)
+  publish: {
+    provider: 'github',
+    owner: 'FeatherCloudSky',
+    repo: 'HDSH'
+  },
   afterPack: path.join(__dirname, 'afterPack-icon.js'),
   directories: {
     output: 'dist',

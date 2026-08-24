@@ -1,3 +1,18 @@
+# HelloDeepseekHarness 1.2.0
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.2.0 更新（2026-08-24）
+
+- **一键自动更新**：设置 → 通用设置 → 检查框架更新，发现新版本后点击「立即更新」，应用自动下载（转圈 + 进度条 + 提示文字反馈）、安装并重启，全程无需手动前往官网下载安装包
+  - 基于 electron-updater（GitHub Releases 发布源，latest.yml 差分更新），未签名场景已处理 SmartScreen/MOTW
+  - 下载进度实时展示（百分比 + 进度条），安装阶段提示「应用将自动重启」
+- **WebUI 检测**：保留官方仓库（deepseek-ai/deepseek-harness）版本检测与发布页入口；WebUI 组件随框架安装包分发，随框架更新一并升级
+- **实现方式**：主进程集成 autoUpdater（check/download/install IPC + 事件转发），preload 扩展 `window.hdsh`（checkUpdate / downloadUpdate / installUpdate / onUpdateEvent）；客户端插件 `dsh-update-check` 升级为事件驱动的状态机 UI
+- 源码工程 `package-app/` 同步更新：app 依赖新增 electron-updater，builder 配置新增 `publish: github`（构建生成 latest.yml + blockmap）
+
+---
+
 # HelloDeepseekHarness 1.1.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
