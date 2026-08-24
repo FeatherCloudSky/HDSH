@@ -1,3 +1,14 @@
+# HelloDeepseekHarness 1.0.3
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.0.3 更新（2026-08-24）
+
+- **鲸鱼 logo 替换**：启动画面与窗口标题栏品牌 logo 改为 DeepSeek 鲸鱼真实图标（`deepseek-512.png`）
+- **启动画面动态提示**：加载过程循环播放多条小贴士，带 0.6 秒渐显渐隐过渡动画
+
+---
+
 # HelloDeepseekHarness 1.0.2
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。

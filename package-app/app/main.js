@@ -20,31 +20,48 @@ const WEB_URL = `http://127.0.0.1:${PORT}`;
 // ================= 内嵌启动画面 =================
 // 窗口先于服务就绪显示,消除"点了图标没反应"的空窗期。
 // 透明底 + 居中圆角卡片,与主界面悬浮窗形态一致。
+// 鲸鱼 logo 运行时读入并内嵌为 data URI(启动画面是 data URL,无法引用相对路径)
+const LOGO_URI = 'data:image/png;base64,' +
+  fs.readFileSync(path.join(__dirname, 'assets', 'deepseek-512.png')).toString('base64');
 const SPLASH_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;background:transparent;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif}
 body{display:flex;align-items:center;justify-content:center}
 .card{display:flex;flex-direction:column;align-items:center;gap:16px;padding:44px 60px;border-radius:24px;
 background:rgba(245,242,234,.92);border:1px solid rgba(160,150,130,.35);box-shadow:0 20px 60px rgba(0,0,0,.18)}
-.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6D8BFF,#4D6BFE 60%,#3B56D9);
-box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 2px 8px rgba(77,107,254,.45);position:relative}
-.logo::after{content:'';position:absolute;left:50%;top:50%;width:17px;height:10px;border-radius:50% 50% 45% 45%;
-background:#fff;transform:translate(-50%,calc(-50% - 1px))}
+.logo{width:44px;height:44px;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(77,107,254,.35)}
+.logo img{width:100%;height:100%;display:block}
 .t{font-size:14px;font-weight:600;color:#262c3e;letter-spacing:.3px}
-.m{font-size:12px;color:#7a8095;margin:-6px 0 0}
+.tip{font-size:12px;color:#7a8095;margin:-6px 0 0;min-height:1.4em;transition:opacity .6s ease}
+.tip.hide{opacity:0}
 .bar{width:180px;height:4px;border-radius:99px;background:rgba(38,44,62,.10);overflow:hidden}
 .bar i{display:block;height:100%;width:40%;border-radius:99px;background:#4D6BFE;animation:s 1.1s ease-in-out infinite}
 @keyframes s{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
-.err .m{color:#b3403a}.err .bar i{animation:none;width:100%;background:#c25650}
-</style></head><body><div class="card"><div class="logo"></div>
-<div class="t">HelloDeepseekHarness</div><div class="m" id="msg">正在启动本地服务…</div>
-<div class="bar"><i></i></div></div></body></html>`;
+.err .tip{color:#b3403a}.err .bar i{animation:none;width:100%;background:#c25650}
+</style></head><body><div class="card"><div class="logo"><img src="${LOGO_URI}" alt=""></div>
+<div class="t">HelloDeepseekHarness</div><div class="tip hide" id="tip">正在初始化…</div>
+<div class="bar"><i></i></div></div>
+<script>
+var tips=['正在初始化…','正在拉起本地运行时…','正在唤醒 DeepSeek Harness…','正在准备工具链…','正在连接本地服务…','稍等片刻，即将就绪…','正在加载界面…'];
+var i=0,el=document.getElementById('tip');
+el.classList.remove('hide');
+var iv=setInterval(function(){
+  el.classList.add('hide');
+  setTimeout(function(){
+    i=(i+1)%tips.length;
+    el.textContent=tips[i];
+    el.classList.remove('hide');
+  },600);
+},3200);
+</script>
+</body></html>`;
 const SPLASH_URL = 'data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML);
 
 function showSplashError(win) {
   if (!win || win.isDestroyed()) return;
   win.webContents.executeJavaScript(
     `document.querySelector('.card').classList.add('err');
-     document.getElementById('msg').textContent = '服务启动失败,请重启应用';`
+     document.getElementById('tip').textContent = '服务启动失败,请重启应用';
+     document.getElementById('tip').classList.remove('hide');`
   ).catch(() => {});
 }
 
