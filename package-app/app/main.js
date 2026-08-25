@@ -259,17 +259,19 @@ async function startService() {
   // 内置更新检测:在 profile 回退 node_modules 建立包链接
   ensureUpdateCheckInProfile();
 
-  console.log('[svc] starting: ' + nodeExe + ' ' + dshBin + ' web --port ' + PORT);
+  console.log('[svc] starting: ' + nodeExe + ' ' + dshBin + ' web --no-open --port ' + PORT);
   const env = { ...process.env, DSH_HOME: home, DSH_WEB_URL: WEB_URL };
   // Windows 下隐藏窗口跑服务(无任何命令行窗口闪现)
   const opts = { env, stdio: 'ignore', windowsHide: true, detached: false };
   // 追加 --patch 覆盖:内置更新检测插件行(文件缺失时跳过,兼容纯官方运行时)。
-  // 注意 --patch 必须放在 --port 之前:web 子命令的 passThroughOptions 会让
-  // 位置参数之后的选项透传给 web 应用解析(--port 由 web 应用解析,先出现会
-  // 把 8898 当作位置参数,导致其后的 --patch 被透传而报 unknown option)。
+  // 注意 --patch 必须放在 --no-open/--port 之前:web 子命令的 passThroughOptions
+  // 会让位置参数之后的选项透传给 web 应用解析(--no-open/--port 由 web 应用解析,
+  // 先出现会把 8898 当作位置参数,导致其后的 --patch 被透传而报 unknown option)。
+  // --no-open:dsh web 默认会用系统默认浏览器打开 WebUI;本应用由玻璃窗口内嵌显示,
+  // 不需要外开浏览器,故显式关闭(WebUI 仍在窗口内加载)。
   const svcArgs = [dshBin, 'web'];
   if (fs.existsSync(HDSH_PATCH_FILE())) svcArgs.push('--patch', HDSH_PATCH_FILE());
-  svcArgs.push('--port', String(PORT));
+  svcArgs.push('--no-open', '--port', String(PORT));
   try {
     serviceProc = spawn(nodeExe, svcArgs, opts);
   } catch (e) {
