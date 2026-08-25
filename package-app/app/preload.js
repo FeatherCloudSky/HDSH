@@ -187,16 +187,12 @@ html.dsh-lg-host #root {
   border: 1px solid rgba(255,255,255,0.18);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.30),
-    inset 0 -1px 0 rgba(255,255,255,0.08),
-    0 12px 32px rgba(0,0,0,0.16),
-    0 3px 10px rgba(0,0,0,0.10);
+    inset 0 -1px 0 rgba(255,255,255,0.08);
 }
 html[data-lg-theme="dark"] #root {
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.18),
-    inset 0 -1px 0 rgba(0,0,0,0.25),
-    0 14px 36px rgba(0,0,0,0.50),
-    0 3px 10px rgba(0,0,0,0.35);
+    inset 0 -1px 0 rgba(0,0,0,0.25);
 }
 
 /* ===== 外层装饰边框:层级最低,纯色外框(mac 风:浅色米白/深色深灰) ===== */
@@ -207,9 +203,7 @@ html[data-lg-theme="dark"] #root {
   border: 1px solid rgba(255,255,255,0.25);
   background: #f5f2ea;              /* 浅色:米白 */
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.35),
-    0 20px 60px rgba(0,0,0,0.12),
-    0 4px 16px rgba(0,0,0,0.08);
+    inset 0 1px 0 rgba(255,255,255,0.35);
   pointer-events: none;         /* 不拦截任何点击 */
   z-index: 0;
 }
@@ -223,17 +217,13 @@ html[data-lg-theme="light"] #dsh-lg-frame {
   background: #f5f2ea;              /* 米白 */
   border-color: rgba(160,150,130,0.35);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.6),
-    0 20px 60px rgba(0,0,0,0.10),
-    0 4px 16px rgba(0,0,0,0.06);
+    inset 0 1px 0 rgba(255,255,255,0.6);
 }
 html[data-lg-theme="dark"] #dsh-lg-frame {
   background: #2d2d2d;              /* 比 WebUI 深色背景(rgb 21,21,23)略浅的灰 */
   border-color: rgba(255,255,255,0.16);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.14),
-    0 20px 60px rgba(0,0,0,0.25),
-    0 4px 16px rgba(0,0,0,0.15);
+    inset 0 1px 0 rgba(255,255,255,0.14);
 }
 #${TITLEBAR_ID} .dsh-lg-btn {
   -webkit-app-region: no-drag;
