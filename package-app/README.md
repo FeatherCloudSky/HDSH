@@ -60,6 +60,7 @@ build.bat
 
 ## 版本记录
 
+- **1.3.1**：修复 WebUI 单独更新的跨版本不兼容。实测确认前端必须与服务端（`dsh-web-app`）完全同版本（rc.7 服务端搭配 rc.8/0.1.1-rc.2 前端均报 `window.__ModuleLoader__ bootstrap facade is missing` 打不开）；`checkLatest` 新增 `compatibleLatest`（与 serverVersion 完全同版本的前端）与 `officialLatest`（官方最新线），main.js `webui-check` 返回配套判断、`webui-download` 严格校验 `version === serverVersion`；新增安装前备份（`webui-update/backup/<版本>/`）与启动自检 `ensureWebuiCompatible()`（前端与服务端不匹配时从备份复制恢复，保留备份）。
 - **1.3.0**：WebUI 单独更新（设置 → 通用设置 → 检查 WebUI 更新 → 立即更新）：新增纯 Node 模块 `app/webui-update.js`（npm registry 检查 `@deepseek-ai/dsh-web-frontend` / tarball 下载 / tar 解压校验 / 原子替换运行时 dist），主进程新增 `hdsh:webui-check / webui-download / webui-install` IPC 与 `hdsh:webui-event` 事件，preload 扩展 `window.hdsh`（webuiCheck / webuiDownload / webuiInstall / onWebuiEvent）；客户端插件 WebUI 组升级为完整状态机（下载进度 → 应用 → 重启服务生效）；builder `files` 白名单新增 `webui-update.js`；修复 dev 模式 `runtimeDir / DSH_HOME / USER_DATA` 路径（统一指向 `package-app/` 下）。
 - **1.2.0**：一键自动更新。主进程集成 electron-updater（check/download/install IPC + 事件转发），preload 扩展 `window.hdsh`（checkUpdate / downloadUpdate / installUpdate / onUpdateEvent）；客户端插件 `dsh-update-check` 升级为事件驱动的状态机 UI（转圈 + 进度条 + 提示）；app 依赖新增 electron-updater；builder 配置新增 `publish: github`（构建生成 latest.yml + blockmap，发布时需随安装包一并上传）。
 - **1.1.0**：内置更新检测（设置 → 通用设置）：WebUI 与框架版本检查、发现新版本询问是否更新、框架更新自动下载安装包。Electron 主进程新增 `hdsh` IPC + preload contextBridge（`window.hdsh`）；更新检测 UI 为随包客户端插件 `runtime-addons/dsh-update-check`，经 `dsh web --patch`（`app/hdsh-update-check.patch.yml`）挂载；主进程启动时在 profile 回退 `node_modules` 建立该包的 junction。

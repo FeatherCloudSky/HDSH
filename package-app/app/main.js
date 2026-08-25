@@ -89,13 +89,17 @@ function frameworkVersion() {
   try { return require('./package.json').version; } catch (_) { return null; }
 }
 // WebUI 生效版本:内置运行时中官方 @deepseek-ai/dsh-web-frontend 的版本
-// (单独更新会替换该包的 dist 并同步其 package.json,因此它反映真实生效版本;
-//  旧版运行时若只有 dsh-web-app,则回退读它)
+// (单独更新会替换该包的 dist 并同步其 package.json,因此它反映真实生效版本)
 function webuiVersion() {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(runtimeDir(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'package.json'), 'utf8'));
     return (pkg && pkg.version) || null;
-  } catch (_) {}
+  } catch (_) { return null; }
+}
+// 服务端版本(@deepseek-ai/dsh-web-app):WebUI 前端必须与其完全同版本配套。
+// 实证:服务端 0.1.0-rc.7 搭配前端 0.1.0-rc.8 / 0.1.1-rc.2 时界面报
+// "window.__ModuleLoader__ bootstrap facade is missing" 打不开。
+function serverVersion() {
   try {
     const pkg = JSON.parse(fs.readFileSync(
       path.join(runtimeDir(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh-web-app', 'package.json'), 'utf8'));
@@ -109,6 +113,46 @@ function webuiPkgRoot() {
 // WebUI 更新临时工作目录(用户数据区,可写;安装目录资源不可靠)
 function webuiWorkDir() {
   return path.join(DSH_HOME(), 'webui-update');
+}
+// WebUI 备份目录:每次安装前把当前 dist 备份到 <webuiWorkDir>/backup/<版本>/dist,
+// 供启动自检在"前端版本与服务端不匹配"时恢复(防止坏更新后界面打不开)。
+function webuiBackupDir() {
+  return path.join(webuiWorkDir(), 'backup');
+}
+// 启动自检:前端版本必须与服务端完全同版本;不匹配(如装了跨线前端或文件被改坏)
+// 时,优先从备份恢复同版本 dist;无备份则记录日志并交给界面提示(检查 WebUI 更新
+// 会显示"恢复为框架内置版本")。此函数同步、快速,在服务拉起前调用。
+function ensureWebuiCompatible() {
+  try {
+    const front = webuiVersion();
+    const server = serverVersion();
+    if (!front || !server) return;
+    if (webuiUpdate.versionsEqual(front, server)) return;
+    console.log('[webui] 版本不匹配 front=' + front + ' server=' + server + ',尝试恢复');
+    const backup = path.join(webuiBackupDir(), server, 'dist');
+    if (!fs.existsSync(backup) || !fs.existsSync(path.join(backup, 'index.html'))) {
+      console.log('[webui] 无可用备份(' + backup + '),跳过自动恢复');
+      return;
+    }
+    const dist = path.join(webuiPkgRoot(), 'dist');
+    // 复制恢复(保留备份供下次使用):旧 dist 先改名,复制失败自动回滚
+    const old = dist + '.bad-' + Date.now();
+    let moved = false;
+    try {
+      if (fs.existsSync(dist)) { fs.renameSync(dist, old); moved = true; }
+      fs.cpSync(backup, dist, { recursive: true });
+      if (moved) fs.rmSync(old, { recursive: true, force: true });
+    } catch (e) {
+      try { if (moved && !fs.existsSync(dist)) fs.renameSync(old, dist); } catch (_) {}
+      console.log('[webui] 恢复失败: ' + (e && e.message));
+      return;
+    }
+    try {
+      const pkgJson = path.join(webuiBackupDir(), server, 'package.json');
+      if (fs.existsSync(pkgJson)) fs.copyFileSync(pkgJson, path.join(webuiPkgRoot(), 'package.json'));
+    } catch (_) {}
+    console.log('[webui] 已从备份恢复前端 ' + server);
+  } catch (e) { console.log('[webui] 自检异常: ' + (e && e.message)); }
 }
 // 下载框架安装包到「下载」文件夹并打开该文件夹(PowerShell 下载,自动跟随重定向)
 // 确保 dsh-update-check 包在 profile 回退 node_modules 中可见
@@ -207,6 +251,8 @@ async function startService() {
   const home = DSH_HOME();
   try { fs.mkdirSync(home, { recursive: true }); } catch (_) {}
 
+  // 启动自检:前端与服务端版本必须匹配,不匹配时从备份恢复(防止坏更新后界面打不开)
+  ensureWebuiCompatible();
   // 内置更新检测:在 profile 回退 node_modules 建立包链接
   ensureUpdateCheckInProfile();
 
@@ -449,18 +495,26 @@ if (!gotLock) {
   };
   ipcMain.handle('hdsh:webui-check', async () => {
     const current = webuiVersion();
-    const chk = await webuiUpdate.checkLatest();
-    if (!chk.ok) return { ok: false, current, error: chk.error || '检查失败' };
-    const latest = chk.latest;
-    const updateAvailable = !!(latest && current && webuiUpdate.compareVersions(latest, current) > 0);
-    const sameLine = !!(latest && current && webuiUpdate.sameLine(current, latest));
+    const server = serverVersion();
+    const chk = await webuiUpdate.checkLatest(server);
+    if (!chk.ok) return { ok: false, current, server, error: chk.error || '检查失败' };
+    // 可"单独更新"的目标 = 与当前服务端完全同版本的前端(重装/修复语义)。
+    // 官方更高版本的前端需要配套新框架,不能单独安装(实证:跨版本前端会
+    // 导致界面报 "window.__ModuleLoader__ bootstrap facade is missing")。
+    const compatibleLatest = chk.compatibleLatest;
+    const officialLatest = chk.officialLatest;
+    const updateAvailable = !!(compatibleLatest && !webuiUpdate.versionsEqual(compatibleLatest, current));
+    const needFrameworkUpdate = !!(officialLatest && current && webuiUpdate.compareVersions(officialLatest, current) > 0
+      && !(compatibleLatest && webuiUpdate.versionsEqual(compatibleLatest, officialLatest)));
     return {
       ok: true,
       current,
-      latest,
-      source: chk.source || '',
+      server,
+      compatibleLatest,
+      officialLatest,
+      officialSource: chk.officialSource || '',
       updateAvailable,
-      sameLine: latest && current ? sameLine : true, // 未知当前版本时不拦
+      needFrameworkUpdate,
       repoUrl: 'https://github.com/deepseek-ai/deepseek-harness/tags',
       repoLabel: '官方仓库'
     };
@@ -471,11 +525,13 @@ if (!gotLock) {
       sendWebuiEvent('error', { message: '缺少目标版本' });
       return { ok: false, error: '缺少目标版本' };
     }
-    // 安全:只能安装与当前同框架线(0.x.y)的版本,防止装错主版本导致界面不兼容
-    const current = webuiVersion();
-    if (current && !webuiUpdate.sameLine(current, version)) {
-      sendWebuiEvent('error', { message: '该版本需要升级框架后使用,请通过「检查框架更新」升级' });
-      return { ok: false, error: '版本与当前框架不兼容' };
+    // 安全:前端只能安装与当前服务端(dsh-web-app)完全同版本的界面。
+    // 跨版本(如 0.1.1-rc.2 前端配 0.1.0-rc.7 服务端)会导致 boot 注入契约不匹配、
+    // 界面打不开,必须走框架更新。
+    const server = serverVersion();
+    if (!server || !webuiUpdate.versionsEqual(server, version)) {
+      sendWebuiEvent('error', { message: '该版本需要配套的新框架,请通过「检查框架更新」升级框架后自动获得' });
+      return { ok: false, error: '版本与当前框架服务端不匹配' };
     }
     const st = await webuiUpdate.fetchStaging({
       version,
@@ -499,7 +555,20 @@ if (!gotLock) {
     sendWebuiEvent('installing', { version: st.version });
     // 1) 停服务(释放文件占用,避免替换冲突)
     stopService();
-    // 2) 原子替换 dist 并同步版本
+    // 2) 安装前备份当前 dist 到用户数据区(启动自检可据此恢复)
+    const before = webuiVersion();
+    if (before) {
+      try {
+        const bdir = path.join(webuiBackupDir(), before);
+        fs.rmSync(bdir, { recursive: true, force: true });
+        fs.mkdirSync(bdir, { recursive: true });
+        fs.cpSync(path.join(webuiPkgRoot(), 'dist'), path.join(bdir, 'dist'), { recursive: true });
+        try {
+          fs.copyFileSync(path.join(webuiPkgRoot(), 'package.json'), path.join(bdir, 'package.json'));
+        } catch (_) {}
+      } catch (e) { console.log('[webui] 备份失败: ' + (e && e.message)); }
+    }
+    // 3) 原子替换 dist 并同步版本
     const ap = webuiUpdate.applyStaging({
       pkgRoot: webuiPkgRoot(),
       distDir: st.distDir,
@@ -512,7 +581,7 @@ if (!gotLock) {
       return { ok: false, error: ap.error };
     }
     lastWebuiStaging = null;
-    // 3) 重启服务使新界面生效;窗口刷新
+    // 4) 重启服务使新界面生效;窗口刷新
     let restarted = false;
     try {
       restarted = await startService();

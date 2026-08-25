@@ -1,3 +1,18 @@
+# HelloDeepseekHarness 1.3.1
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.3.1 更新（2026-08-25）
+
+- **修复 WebUI 单独更新的跨版本不兼容**（1.3.0 引入）：此前「检查 WebUI 更新」会把前端升到官方最新（如 0.1.1-rc.2），但新版前端需要配套的新服务端 API，与内置服务端（如 0.1.0-rc.7）不匹配，导致界面报 `window.__ModuleLoader__ bootstrap facade is missing` 打不开
+  - 实测确认：服务端 0.1.0-rc.7 搭配前端 0.1.0-rc.8 / 0.1.1-rc.2 均无法启动界面，**前端必须与服务端完全同版本**
+  - **新策略**：WebUI「单独更新」仅允许安装与当前服务端（`@deepseek-ai/dsh-web-app`）**完全同版本**的前端，语义为修复/重装框架配套界面；官方更高版本的前端明确提示"需要配套新框架，请使用「检查框架更新」升级"
+- **启动自检自动恢复**：应用启动时校验前端与服务端版本，若不匹配（如装了跨版本前端）自动从安装前备份恢复配套界面，避免坏更新后界面打不开
+- **安装前备份**：每次应用 WebUI 更新前，把当前 dist 与版本信息备份到用户数据目录（`dsh-home/webui-update/backup/<版本>/`）
+- 源码工程 `package-app/` 同步更新；版本升至 1.3.1
+
+---
+
 # HelloDeepseekHarness 1.3.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。

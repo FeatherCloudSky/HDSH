@@ -58,6 +58,14 @@ function sameLine(a, b) {
   const pb = parseVersion(b);
   return !!(pa && pb && pa.core[0] === pb.core[0] && pa.core[1] === pb.core[1]);
 }
+// 严格版本相等(含预发布段):WebUI 前端必须与服务端(dsh-web-app)完全同版本。
+// 实证:0.1.0-rc.7 服务端搭配 0.1.0-rc.8 / 0.1.1-rc.2 前端均报
+// "web boot: window.__ModuleLoader__ bootstrap facade is missing"(boot 注入契约不匹配),
+// 因此"单独更新"只允许重装/修复与当前服务端同版本的前端。
+function versionsEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  return a.trim() === b.trim();
+}
 
 // ================= 轻量 HTTP(跟随重定向,JSON) =================
 function httpGetJson(url, timeoutMs) {
@@ -129,11 +137,15 @@ function downloadFile(url, destPath, onProgress, timeoutMs) {
 }
 
 // ================= 检查最新版本 =================
-// 返回:{ ok, latest, source, tags }
+// 入参 serverVersion: 当前服务端(dsh-web-app)版本,决定"可单独更新的前端版本"。
+// 返回:{ ok, tags, officialLatest, officialSource, compatibleLatest, versions }
+//  - officialLatest: dist-tags 中版本最高者(官方最新线,可能需配套新框架)
+//  - compatibleLatest: npm 已发布版本中与 serverVersion 完全同版本的前端
+//    (仅此版本可与当前服务端配套;同版本即"重装/修复"语义)
 // 策略:npm 上 latest 标签可能停留在旧发布线(如 0.0.1-rc.5),而活跃 rc 线在
-//       next(如 0.1.1-rc.2)。因此从所有 dist-tags 候选(latest/next/其余)里
-//       取版本号最高者,避免把"旧标签"误报为可降级/可更新。
-async function checkLatest() {
+//       next(如 0.1.1-rc.2)。因此从所有 dist-tags 候选里取版本号最高者,
+//       避免把"旧标签"误报为可降级/可更新。
+async function checkLatest(serverVersion) {
   const res = await httpGetJson(REGISTRY_BASE + '/@deepseek-ai/dsh-web-frontend', 15000);
   if (!res.ok) return { ok: false, error: res.error || '无法访问 npm registry' };
   const tags = (res.data && res.data['dist-tags']) || {};
@@ -146,7 +158,18 @@ async function checkLatest() {
       bestTag = tag;
     }
   }
-  return { ok: true, latest: best, source: best ? 'npm(' + bestTag + ')' : '', tags };
+  const versions = Object.keys((res.data && res.data.versions) || {});
+  const compatibleLatest = typeof serverVersion === 'string' && versions.indexOf(serverVersion) !== -1
+    ? serverVersion
+    : null;
+  return {
+    ok: true,
+    tags,
+    officialLatest: best,
+    officialSource: best ? 'npm(' + bestTag + ')' : '',
+    compatibleLatest,
+    versions
+  };
 }
 
 // ================= 解压 + 校验 =================
@@ -282,6 +305,7 @@ module.exports = {
   parseVersion,
   compareVersions,
   sameLine,
+  versionsEqual,
   checkLatest,
   downloadFile,
   extractAndVerify,

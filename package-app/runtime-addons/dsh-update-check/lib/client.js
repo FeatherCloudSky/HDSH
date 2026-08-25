@@ -285,7 +285,7 @@ window.__ModuleLoader__.load({
 				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckWebui(setState) },
 					state.phase === "checking" ? "检查中…" : "检查 WebUI 更新")
 			));
-			els.push(h("div", { className: "updchk-note" }, "可单独更新 WebUI 界面(不重装框架):下载官方新版界面后自动替换并重启本地服务,几秒钟生效。"));
+			els.push(h("div", { className: "updchk-note" }, "WebUI 界面与框架服务端强配套(跨版本会无法启动)。单独更新仅用于修复/重装与当前框架配套的界面;官方新版界面请通过「检查框架更新」升级框架后自动获得。"));
 
 			if (state.phase === "idle") {
 				els.push(h("div", { className: "updchk-status" }, "未检查 · 点击上方按钮开始"));
@@ -300,25 +300,26 @@ window.__ModuleLoader__.load({
 				}
 			} else if (state.phase === "checked") {
 				const cur = result && result.current ? result.current : "未知";
-				const lat = result && result.latest ? result.latest : "未知";
-				els.push(h("div", { className: "updchk-vers" }, "当前版本:" + cur + "　·　最新版本:" + lat + (result && result.source ? "(" + result.source + ")" : "")));
-				if (result && result.updateAvailable) {
-					if (result.sameLine) {
-						if (!state.dismissed) {
-							els.push(h("div", { className: "updchk-confirm" },
-								h("span", { className: "updchk-warn" }, "⚠ 发现新版 WebUI,是否立即更新?"),
-								h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doUpdateWebui(setState, result.latest) }, "立即更新"),
-								h("button", { className: "updchk-btn", onClick: () => setState((prev) => ({ ...prev, dismissed: true })) }, "暂不更新")
-							));
-						} else {
-							els.push(h("div", { className: "updchk-status updchk-warn" }, "已忽略本次更新提醒(可再次点击按钮重新检测)"));
-						}
+				const srv = result && result.server ? result.server : "未知";
+				const fixVer = result && result.compatibleLatest ? result.compatibleLatest : null;
+				const offVer = result && result.officialLatest ? result.officialLatest : null;
+				els.push(h("div", { className: "updchk-vers" }, "当前界面:" + cur + "　·　框架服务端:" + srv));
+				if (result && result.updateAvailable && fixVer) {
+					// 当前前端与服务端不配套 → 恢复为框架配套版本
+					if (!state.dismissed) {
+						els.push(h("div", { className: "updchk-confirm" },
+							h("span", { className: "updchk-warn" }, "⚠ 当前界面版本与框架服务端不匹配,是否恢复为框架配套界面?"),
+							h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doUpdateWebui(setState, fixVer) }, "恢复"),
+							h("button", { className: "updchk-btn", onClick: () => setState((prev) => ({ ...prev, dismissed: true })) }, "暂不")
+						));
 					} else {
-						els.push(h("div", { className: "updchk-status updchk-warn" }, "⚠ 官方新版 WebUI 需要配套新框架,请通过「检查框架更新」升级后自动获得"));
-						els.push(h("button", { className: "updchk-link", onClick: () => openRepo(result) }, "打开官方仓库 ↗"));
+						els.push(h("div", { className: "updchk-status updchk-warn" }, "已忽略本次恢复提醒(可再次点击按钮重新检测)"));
 					}
 				} else {
-					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已是最新版本"));
+					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已是最新(与当前框架配套)"));
+					if (result && result.needFrameworkUpdate && offVer) {
+						els.push(h("div", { className: "updchk-status updchk-warn" }, "官方新版界面 v" + offVer + " 需要配套新框架,请使用「检查框架更新」升级(升级后自动获得)"));
+					}
 				}
 				if (result && result.repoUrl && !(result.updateAvailable)) {
 					els.push(h("button", { className: "updchk-link", onClick: () => openRepo(result) }, "打开" + (result.repoLabel || "仓库") + " ↗"));
@@ -336,7 +337,7 @@ window.__ModuleLoader__.load({
 					h("span", null, "正在应用更新并重启服务…")));
 				els.push(h("div", { className: "updchk-tip" }, "正在替换界面文件并重启本地服务,请稍候"));
 			} else if (state.phase === "done") {
-				els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已更新到 " + (state.latest || "新版本") + ",界面即将刷新"));
+				els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已应用 " + (state.latest || "框架配套界面") + ",界面即将刷新"));
 			}
 			return h("div", { className: "updchk-group" }, els);
 		}
@@ -350,7 +351,7 @@ window.__ModuleLoader__.load({
 			return h("div", { className: "updchk-row" },
 				h("div", { className: "updchk-head" },
 					h("div", { className: "updchk-title" }, "更新检测"),
-					h("div", { className: "updchk-desc" }, "一键自动更新框架;WebUI 界面可单独更新(不重装框架)。发现新版本时会询问是否更新。")
+					h("div", { className: "updchk-desc" }, "一键自动更新框架;WebUI 界面与框架配套,异常时可单独修复/恢复。发现新版本时会询问是否更新。")
 				),
 				renderFrameworkGroup(framework, setFramework),
 				renderWebuiGroup(webui, setWebui)
