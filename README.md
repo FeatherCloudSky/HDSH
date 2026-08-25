@@ -12,6 +12,7 @@
 - **鲸鱼 logo**：启动画面与标题栏品牌均使用 DeepSeek 鲸鱼真实图标（v1.0.3）
 - **启动提示**：加载时循环播放趣味提示，渐显渐隐过渡（v1.0.3）
 - **一键自动更新**：设置 → 通用设置 → 检查框架更新 → 发现新版本后点击「立即更新」，自动下载（转圈 + 进度条 + 提示）、安装并重启应用，全程无需手动前往官网下载（v1.2.0）
+- **WebUI 单独更新**：设置 → 通用设置 → 检查 WebUI 更新，发现新版界面后可一键下载并应用，替换运行时 dist、重启本地服务即生效，**无需重装框架**（v1.3.0）
 - **内置更新检测**：设置 → 通用设置 中两个独立按钮，分别检查 WebUI（官方 deepseek-ai 仓库）与本框架（HDSH 仓库）的新版本；发现新版本时询问是否更新（v1.1.0）
 - **纯净圆角**：关闭系统原生圆角，悬浮窗四角真正透明、无第二道弧线残边（v1.0.2）
 - **零依赖**：内置 Node.js 与 dsh 运行时，无需预装任何环境
@@ -20,9 +21,9 @@
 
 ## 下载
 
-**最新版本：v1.2.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.2.0)）
+**最新版本：v1.3.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.3.0)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.2.0.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.3.0.exe`。
 
 | 项 | 要求 |
 |---|---|
@@ -33,7 +34,7 @@
 
 ## 安装
 
-1. 双击 `HelloDeepseekHarness-Setup-1.2.0.exe`，按向导操作；
+1. 双击 `HelloDeepseekHarness-Setup-1.3.0.exe`，按向导操作；
 2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\HelloDeepseekHarness`）；
 3. 向导自动创建桌面快捷方式与开始菜单项；
 4. 安装完成后自动启动应用。

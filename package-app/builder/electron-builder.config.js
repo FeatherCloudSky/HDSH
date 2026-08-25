@@ -25,6 +25,7 @@ module.exports = {
   files: [
     'main.js',
     'preload.js',
+    'webui-update.js',
     'assets/**/*',
     'package.json',
     'hdsh-update-check.patch.yml'

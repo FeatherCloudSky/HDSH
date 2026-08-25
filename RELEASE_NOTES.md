@@ -1,3 +1,18 @@
+# HelloDeepseekHarness 1.3.0
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.3.0 更新（2026-08-24）
+
+- **WebUI 单独更新**：设置 → 通用设置 → 检查 WebUI 更新，发现新版本后点击「立即更新」，应用自动下载官方新版界面（转圈 + 进度条）、解压校验、原子替换并重启本地服务，几秒钟生效——**无需重装框架**
+  - 版本来源：官方 npm `@deepseek-ai/dsh-web-frontend`（dist-tags 取版本最高者，避免 latest 旧标签误报；仅允许与当前框架同 major.minor 的版本，防止界面与服务端 API 不匹配）
+  - 更新对象：运行时 `node_modules/@deepseek-ai/dsh-web-frontend/dist`（dsh web 经 `require.resolve` 服务该目录），替换后重启 dsh web 服务并刷新窗口
+  - 实现方式：新增纯 Node 模块 `app/webui-update.js`（registry 检查 / tarball 下载 / tar 解压校验 / 原子替换），主进程新增 `hdsh:webui-check / webui-download / webui-install` IPC 与 `hdsh:webui-event` 事件，preload 扩展 `window.hdsh`（webuiCheck / webuiDownload / webuiInstall / onWebuiEvent）；客户端插件 WebUI 组升级为完整状态机（检查 → 下载进度 → 应用 → 完成）
+- 修复 dev 模式路径：`runtimeDir / DSH_HOME / USER_DATA` 的开发分支统一指向 `package-app/` 下（此前多一层目录导致 dev 启动找不到内置运行时、junction 建错位置）
+- 源码工程 `package-app/` 同步更新：builder `files` 白名单新增 `webui-update.js`，插件与 app 版本升至 1.3.0
+
+---
+
 # HelloDeepseekHarness 1.2.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。

@@ -9,6 +9,7 @@ const os = require('os');
 const http = require('http');
 const { spawn, spawnSync } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const webuiUpdate = require('./webui-update.js');
 
 const APP_NAME = 'HelloDeepseekHarness';
 app.setName(APP_NAME);
@@ -70,7 +71,7 @@ function showSplashError(win) {
 // 开发模式:resources 在项目下 runtime-staging/;打包后:process.resourcesPath
 function runtimeDir() {
   if (app.isPackaged) return path.join(process.resourcesPath, 'runtime');
-  return path.join(__dirname, '..', '..', 'runtime-staging');
+  return path.join(__dirname, '..', 'runtime-staging');
 }
 const NODE_EXE = () => path.join(runtimeDir(), 'node', 'node.exe');
 const DSH_BIN = () => path.join(runtimeDir(), 'dsh', 'lib', 'bin.js');
@@ -87,13 +88,27 @@ const HDSH_PATCH_FILE = () => app.isPackaged
 function frameworkVersion() {
   try { return require('./package.json').version; } catch (_) { return null; }
 }
-// WebUI 版本:内置运行时中官方 @deepseek-ai/dsh-web-app 的版本
+// WebUI 生效版本:内置运行时中官方 @deepseek-ai/dsh-web-frontend 的版本
+// (单独更新会替换该包的 dist 并同步其 package.json,因此它反映真实生效版本;
+//  旧版运行时若只有 dsh-web-app,则回退读它)
 function webuiVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(runtimeDir(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'package.json'), 'utf8'));
+    return (pkg && pkg.version) || null;
+  } catch (_) {}
   try {
     const pkg = JSON.parse(fs.readFileSync(
       path.join(runtimeDir(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh-web-app', 'package.json'), 'utf8'));
     return (pkg && pkg.version) || null;
   } catch (_) { return null; }
+}
+// WebUI 前端包目录(单独更新的替换目标)
+function webuiPkgRoot() {
+  return path.join(runtimeDir(), 'dsh', 'node_modules', '@deepseek-ai', 'dsh-web-frontend');
+}
+// WebUI 更新临时工作目录(用户数据区,可写;安装目录资源不可靠)
+function webuiWorkDir() {
+  return path.join(DSH_HOME(), 'webui-update');
 }
 // 下载框架安装包到「下载」文件夹并打开该文件夹(PowerShell 下载,自动跟随重定向)
 // 确保 dsh-update-check 包在 profile 回退 node_modules 中可见
@@ -103,17 +118,18 @@ function webuiVersion() {
 function ensureUpdateCheckInProfile() {
   try {
     const src = path.join(runtimeDir(), 'dsh', 'node_modules', 'dsh-update-check');
-    if (!fs.existsSync(src)) return;
+    if (!fs.existsSync(src)) { console.log('[updchk] src missing: ' + src); return; }
     const nm = path.join(DSH_HOME(), 'profiles', 'node_modules');
     const link = path.join(nm, 'dsh-update-check');
-    if (fs.existsSync(link)) return;
+    if (fs.existsSync(link)) { console.log('[updchk] link exists'); return; }
     fs.mkdirSync(nm, { recursive: true });
     try {
       fs.symlinkSync(src, link, 'junction');
+      console.log('[updchk] junction created: ' + link);
     } catch (_) {
-      try { fs.cpSync(src, link, { recursive: true }); } catch (__) {}
+      try { fs.cpSync(src, link, { recursive: true }); console.log('[updchk] copied fallback'); } catch (__) { console.log('[updchk] copy failed'); }
     }
-  } catch (_) {}
+  } catch (e) { console.log('[updchk] failed: ' + (e && e.message)); }
 }
 
 // 下载框架安装包到「下载」文件夹并打开该文件夹(PowerShell 下载,自动跟随重定向)
@@ -142,7 +158,7 @@ function downloadFramework(url, fileName) {
 // 用户数据目录(会话/设置/插件),独立于安装目录 → 覆盖安装/卸载都不丢
 // 开发模式:项目下 dev-data/ 便于测试;打包后:%APPDATA%\HelloDeepseekHarness\dsh-home
 const DSH_HOME = () => {
-  if (!app.isPackaged) return path.join(__dirname, '..', '..', 'dev-data', 'dsh-home');
+  if (!app.isPackaged) return path.join(__dirname, '..', 'dev-data', 'dsh-home');
   return path.join(app.getPath('appData'), 'HelloDeepseekHarness', 'dsh-home');
 };
 
@@ -150,7 +166,7 @@ const DSH_HOME = () => {
 const udArg = process.argv.find(a => a.startsWith('--userdata-dir='));
 const USER_DATA = udArg ? udArg.slice(15) : (app.isPackaged
   ? path.join(app.getPath('appData'), 'HelloDeepseekHarness', 'user-data')
-  : path.join(__dirname, '..', '..', 'dev-data', 'user-data'));
+  : path.join(__dirname, '..', 'dev-data', 'user-data'));;
 try { app.setPath('userData', USER_DATA); } catch (_) {}
 
 // ================= 服务生命周期 =================
@@ -419,6 +435,94 @@ if (!gotLock) {
       return { ok: true };
     });
   }
+
+  // ---- WebUI 单独更新(不重装框架;替换运行时 dsh-web-frontend/dist) ----
+  // 检查/下载/安装三阶段;进度与结果经 hdsh:webui-event 推给渲染进程。
+  // WebUI 资产 = 运行时 @deepseek-ai/dsh-web-frontend/dist,由 dsh web 直接服务,
+  // 替换后重启 dsh web 服务并 reload 窗口即生效。
+  let lastWebuiStaging = null; // 会话内暂存:{ version, distDir, pkgDir, stagingDir }
+  const sendWebuiEvent = (type, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const payload = Object.assign({ type }, data || {});
+      mainWindow.webContents.send('hdsh:webui-event', payload);
+    }
+  };
+  ipcMain.handle('hdsh:webui-check', async () => {
+    const current = webuiVersion();
+    const chk = await webuiUpdate.checkLatest();
+    if (!chk.ok) return { ok: false, current, error: chk.error || '检查失败' };
+    const latest = chk.latest;
+    const updateAvailable = !!(latest && current && webuiUpdate.compareVersions(latest, current) > 0);
+    const sameLine = !!(latest && current && webuiUpdate.sameLine(current, latest));
+    return {
+      ok: true,
+      current,
+      latest,
+      source: chk.source || '',
+      updateAvailable,
+      sameLine: latest && current ? sameLine : true, // 未知当前版本时不拦
+      repoUrl: 'https://github.com/deepseek-ai/deepseek-harness/tags',
+      repoLabel: '官方仓库'
+    };
+  });
+  ipcMain.handle('hdsh:webui-download', async (_e, payload) => {
+    const version = payload && payload.version;
+    if (!version || typeof version !== 'string') {
+      sendWebuiEvent('error', { message: '缺少目标版本' });
+      return { ok: false, error: '缺少目标版本' };
+    }
+    // 安全:只能安装与当前同框架线(0.x.y)的版本,防止装错主版本导致界面不兼容
+    const current = webuiVersion();
+    if (current && !webuiUpdate.sameLine(current, version)) {
+      sendWebuiEvent('error', { message: '该版本需要升级框架后使用,请通过「检查框架更新」升级' });
+      return { ok: false, error: '版本与当前框架不兼容' };
+    }
+    const st = await webuiUpdate.fetchStaging({
+      version,
+      workDir: webuiWorkDir(),
+      onProgress: (phase, data) => sendWebuiEvent(phase === 'downloading' ? 'downloading' : 'extracting', data)
+    });
+    if (!st.ok) {
+      sendWebuiEvent('error', { message: st.error || '获取失败' });
+      return { ok: false, error: st.error };
+    }
+    lastWebuiStaging = st;
+    sendWebuiEvent('downloaded', { version: st.version });
+    return { ok: true, version: st.version };
+  });
+  ipcMain.handle('hdsh:webui-install', async () => {
+    if (!lastWebuiStaging) {
+      sendWebuiEvent('error', { message: '尚未下载更新内容,请先下载' });
+      return { ok: false, error: '尚未下载' };
+    }
+    const st = lastWebuiStaging;
+    sendWebuiEvent('installing', { version: st.version });
+    // 1) 停服务(释放文件占用,避免替换冲突)
+    stopService();
+    // 2) 原子替换 dist 并同步版本
+    const ap = webuiUpdate.applyStaging({
+      pkgRoot: webuiPkgRoot(),
+      distDir: st.distDir,
+      pkgDir: st.pkgDir,
+      stagingDir: st.stagingDir
+    });
+    if (!ap.ok) {
+      sendWebuiEvent('error', { message: ap.error || '安装失败' });
+      lastWebuiStaging = null;
+      return { ok: false, error: ap.error };
+    }
+    lastWebuiStaging = null;
+    // 3) 重启服务使新界面生效;窗口刷新
+    let restarted = false;
+    try {
+      restarted = await startService();
+    } catch (_) { restarted = false; }
+    if (mainWindow && !mainWindow.isDestroyed() && restarted) {
+      try { mainWindow.loadURL(WEB_URL); } catch (_) {}
+    }
+    sendWebuiEvent('done', { version: ap.version });
+    return { ok: true, version: ap.version, restarted };
+  });
 
   app.on('second-instance', () => {
     if (mainWindow) {
