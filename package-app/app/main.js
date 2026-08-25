@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const http = require('http');
+const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const webuiUpdate = require('./webui-update.js');
@@ -114,6 +115,8 @@ function webuiPkgRoot() {
 function webuiWorkDir() {
   return path.join(DSH_HOME(), 'webui-update');
 }
+// 框架更新安装包下载目录(userData 区,可写)
+const UPDATES_DIR = () => path.join(USER_DATA, 'updates');
 // WebUI 备份目录:每次安装前把当前 dist 备份到 <webuiWorkDir>/backup/<版本>/dist,
 // 供启动自检在"前端版本与服务端不匹配"时恢复(防止坏更新后界面打不开)。
 function webuiBackupDir() {
@@ -593,6 +596,193 @@ if (!gotLock) {
     return { ok: true, version: ap.version, restarted };
   });
 
+  // ---- 统一更新(框架 + WebUI 一次检查、一键完成) ----
+  // 检查:框架走 electron-updater(latest.yml),WebUI 走官方 npm;结果分行返回
+  // 版本号,由设置页统一展示。更新:先修复 WebUI(如与前端不匹配)→ 多连接
+  // 加速下载框架安装包 → SHA-512 校验 → 退出应用并静默安装(新框架自带配套
+  // 新 WebUI)。加速下载不可用时自动回退 electron-updater 标准通道。
+  let lastCheck = null;          // 最近一次统一检查结果(含 updateInfo,不下发渲染进程)
+  let pendingInstaller = null;   // 待运行的新版安装包路径(应用退出后执行)
+  let installerSpawned = false;
+
+  const sendAllEvent = (type, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('hdsh:update-all-event', Object.assign({ type }, data || {}));
+    }
+  };
+
+  async function checkAllUpdates() {
+    // 框架:electron-updater 检查(开发模式跳过)
+    const fw = { current: frameworkVersion(), latest: null, updateAvailable: false, skipped: false, error: null };
+    let updateInfo = null;
+    if (!app.isPackaged) {
+      fw.skipped = true;
+    } else {
+      try {
+        const r = await autoUpdater.checkForUpdates();
+        updateInfo = (r && r.updateInfo) || null;
+        fw.latest = (updateInfo && updateInfo.version) || null;
+        fw.updateAvailable = !!(fw.latest && fw.current && webuiUpdate.compareVersions(fw.latest, fw.current) > 0);
+      } catch (e) {
+        fw.error = String((e && e.message) || e);
+      }
+    }
+    // WebUI:官方 npm 检查(前端必须与服务端同版本;官方更高版本随框架更新附带)
+    const wb = {
+      current: webuiVersion(), server: serverVersion(),
+      officialLatest: null, officialSource: '', mismatch: false, repairVersion: null,
+      needFrameworkUpdate: false, error: null
+    };
+    try {
+      const chk = await webuiUpdate.checkLatest(wb.server);
+      if (chk.ok) {
+        wb.officialLatest = chk.officialLatest;
+        wb.officialSource = chk.officialSource || '';
+        wb.mismatch = !!(wb.current && wb.server && !webuiUpdate.versionsEqual(wb.current, wb.server));
+        wb.repairVersion = wb.mismatch ? wb.server : null;
+        wb.needFrameworkUpdate = !!(chk.officialLatest && wb.server
+          && webuiUpdate.compareVersions(chk.officialLatest, wb.server) > 0);
+      } else {
+        wb.error = chk.error || '检查失败';
+      }
+    } catch (e) {
+      wb.error = String((e && e.message) || e);
+    }
+    const actions = [];
+    if (wb.mismatch && wb.repairVersion) actions.push('webui-repair');
+    if (fw.updateAvailable) actions.push('framework-update');
+    lastCheck = { framework: fw, webui: wb, actions, updateInfo };
+    // 渲染进程只拿摘要(updateInfo 含下载地址等,留在主进程)
+    return {
+      ok: true,
+      framework: { current: fw.current, latest: fw.latest, updateAvailable: fw.updateAvailable, skipped: fw.skipped, error: fw.error },
+      webui: { current: wb.current, server: wb.server, officialLatest: wb.officialLatest, officialSource: wb.officialSource, mismatch: wb.mismatch, repairVersion: wb.repairVersion, needFrameworkUpdate: wb.needFrameworkUpdate, error: wb.error },
+      actions,
+      anyUpdate: actions.length > 0
+    };
+  }
+
+  // 修复 WebUI:下载与当前服务端配套的前端并原子替换(与单独更新同一实现)
+  async function repairWebuiNow(version) {
+    sendAllEvent('repairing', { version });
+    const st = await webuiUpdate.fetchStaging({
+      version,
+      workDir: webuiWorkDir(),
+      onProgress: (phase, data) => sendAllEvent(phase === 'downloading' ? 'repair-downloading' : 'extracting', data)
+    });
+    if (!st.ok) throw new Error(st.error || '获取 WebUI 更新失败');
+    stopService();
+    // 安装前备份当前 dist(启动自检可据此恢复)
+    const before = webuiVersion();
+    if (before) {
+      try {
+        const bdir = path.join(webuiBackupDir(), before);
+        fs.rmSync(bdir, { recursive: true, force: true });
+        fs.mkdirSync(bdir, { recursive: true });
+        fs.cpSync(path.join(webuiPkgRoot(), 'dist'), path.join(bdir, 'dist'), { recursive: true });
+        try { fs.copyFileSync(path.join(webuiPkgRoot(), 'package.json'), path.join(bdir, 'package.json')); } catch (_) {}
+      } catch (e) { console.log('[webui] 备份失败: ' + (e && e.message)); }
+    }
+    const ap = webuiUpdate.applyStaging({
+      pkgRoot: webuiPkgRoot(),
+      distDir: st.distDir,
+      pkgDir: st.pkgDir,
+      stagingDir: st.stagingDir
+    });
+    if (!ap.ok) throw new Error(ap.error || '应用 WebUI 更新失败');
+    try { await startService(); } catch (_) {}
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try { mainWindow.loadURL(WEB_URL); } catch (_) {}
+    }
+  }
+
+  // SHA-512 校验(latest.yml 中为 base64)
+  function verifyFileSha512(file, expectedB64) {
+    return new Promise((resolve) => {
+      if (!expectedB64) return resolve(true);
+      try {
+        const h = crypto.createHash('sha512');
+        const s = fs.createReadStream(file);
+        s.on('data', (c) => { try { h.update(c); } catch (_) {} });
+        s.on('end', () => { try { resolve(h.digest('base64') === expectedB64); } catch (_) { resolve(false); } });
+        s.on('error', () => resolve(false));
+      } catch (_) { resolve(false); }
+    });
+  }
+
+  // 多连接加速下载框架安装包;失败返回 fallback:true(调用方回退标准通道)
+  async function acceleratedFrameworkDownload(updateInfo) {
+    const files = (updateInfo && updateInfo.files) || [];
+    const exe = files.find((f) => f && typeof f.url === 'string' && /\.exe(\?|$)/i.test(f.url));
+    if (!exe) return { ok: false, fallback: true, error: '未找到安装包下载地址' };
+    let dest;
+    try {
+      fs.mkdirSync(UPDATES_DIR(), { recursive: true });
+      // 清理旧安装包
+      try {
+        for (const f of fs.readdirSync(UPDATES_DIR())) {
+          if (f !== path.basename(new URL(exe.url).pathname)) {
+            try { fs.rmSync(path.join(UPDATES_DIR(), f), { force: true }); } catch (_) {}
+          }
+        }
+      } catch (_) {}
+      dest = path.join(UPDATES_DIR(), path.basename(new URL(exe.url).pathname));
+    } catch (e) {
+      return { ok: false, fallback: true, error: '创建下载目录失败: ' + ((e && e.message) || e) };
+    }
+    const r = await webuiUpdate.downloadFileParallel(exe.url, dest, (p) => sendAllEvent('downloading', p), { connections: 6 });
+    if (!r.ok) {
+      try { fs.rmSync(dest, { force: true }); } catch (_) {}
+      return { ok: false, fallback: true, error: r.error || '下载失败' };
+    }
+    sendAllEvent('verifying', { version: updateInfo.version });
+    if (!(await verifyFileSha512(dest, exe.sha512 || (updateInfo && updateInfo.sha512)))) {
+      try { fs.rmSync(dest, { force: true }); } catch (_) {}
+      return { ok: false, fallback: true, error: '安装包校验失败' };
+    }
+    return { ok: true, file: dest, version: updateInfo.version };
+  }
+
+  function quitAndRunInstaller(file) {
+    pendingInstaller = file;
+    installerSpawned = false;
+    sendAllEvent('installing', { version: (lastCheck && lastCheck.framework.latest) || null });
+    app.quit();
+  }
+
+  ipcMain.handle('hdsh:check-all', async () => {
+    try { return await checkAllUpdates(); } catch (e) {
+      return { ok: false, error: String((e && e.message) || e), actions: [], anyUpdate: false };
+    }
+  });
+  ipcMain.handle('hdsh:update-all-run', async () => {
+    try {
+      const chk = lastCheck || await checkAllUpdates();
+      // 1) WebUI 修复(与前端不匹配时;完成后界面已刷新)
+      if (chk.actions.indexOf('webui-repair') !== -1) {
+        await repairWebuiNow(chk.webui.repairVersion);
+      }
+      // 2) 框架更新(新框架自带配套新 WebUI)
+      if (chk.actions.indexOf('framework-update') !== -1 && chk.updateInfo) {
+        const dl = await acceleratedFrameworkDownload(chk.updateInfo);
+        if (dl.ok) {
+          quitAndRunInstaller(dl.file);
+          return { ok: true, mode: 'accelerated', version: dl.version };
+        }
+        // 回退:electron-updater 标准下载(事件经 hdsh:updater-event,UI 已订阅)
+        sendAllEvent('fallback', { message: dl.error || '加速通道不可用' });
+        autoUpdater.downloadUpdate().catch((e) =>
+          sendAllEvent('error', { message: String((e && e.message) || e) }));
+        return { ok: true, mode: 'standard' };
+      }
+      return { ok: true, mode: chk.actions.length ? 'done' : 'none' };
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      sendAllEvent('error', { message: msg });
+      return { ok: false, error: msg };
+    }
+  });
+
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -622,5 +812,17 @@ if (!gotLock) {
     app.quit();
   });
 
-  app.on('before-quit', () => { app.isQuitting = true; stopService(); });
+  app.on('before-quit', () => {
+    app.isQuitting = true;
+    stopService();
+    // 一键更新:应用完全退出后静默运行新版安装包(NSIS /S 静默;--updated
+    // 告知安装器这是更新安装,与 electron-updater 行为一致)
+    if (pendingInstaller && !installerSpawned) {
+      installerSpawned = true;
+      try {
+        const child = spawn(pendingInstaller, ['/S', '--updated'], { detached: true, stdio: 'ignore', windowsHide: true });
+        child.unref();
+      } catch (e) { console.error('[update] 启动安装包失败: ' + (e && e.message)); }
+    }
+  });
 }

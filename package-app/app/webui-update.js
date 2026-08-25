@@ -13,7 +13,7 @@ const { spawnSync } = require('child_process');
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-web-frontend';
 const REGISTRY_BASE = 'https://registry.npmjs.org';
-const UA = 'HDSH-webui-updater/1.3.0';
+const UA = 'HDSH-webui-updater/1.4.0';
 const TAR_EXE = process.env.SystemRoot
   ? path.join(process.env.SystemRoot, 'System32', 'tar.exe')
   : 'tar.exe';
@@ -93,6 +93,130 @@ function httpGetJson(url, timeoutMs) {
     req.on('error', (e) => resolve({ ok: false, error: e.message || '网络错误' }));
     req.setTimeout(timeoutMs || 15000, () => { req.destroy(); resolve({ ok: false, error: '请求超时' }); });
   });
+}
+
+// ================= 重定向跟随的流式请求(分块下载复用) =================
+// 与 downloadFile 的区别:把响应交给回调,由调用方消费流(支持 Range 分块)。
+function requestStream(url, headers, cb, redirectsLeft, timeoutMs) {
+  const left = typeof redirectsLeft === 'number' ? redirectsLeft : 5;
+  const req = https.get(url, { headers: headers || {} }, (res) => {
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      res.resume();
+      if (left <= 0) { cb(new Error('重定向过多'), null); return; }
+      requestStream(new URL(res.headers.location, url).toString(), headers, cb, left - 1, timeoutMs);
+      return;
+    }
+    cb(null, res, req);
+  });
+  req.on('error', (e) => cb(e, null));
+  req.setTimeout(timeoutMs || 300000, () => { req.destroy(new Error('请求超时')); });
+  return req;
+}
+
+// ================= 多连接分块下载(框架安装包提速) =================
+// 单线程从 GitHub 下载 ~180MB 安装包很慢;这里用 Range 请求并发拉取多个分块
+// 写入同一文件的不同偏移。服务器不支持 Range 时自动退化为单流 downloadFile。
+// opts: { connections(默认6,上限8), timeoutMs, minChunkSize(默认4MB,测试可调小) }
+// 返回:{ ok, size?, connections?, error?, transferred? }
+async function downloadFileParallel(url, destPath, onProgress, opts) {
+  const o = opts || {};
+  const maxConn = Math.max(1, Math.min(8, o.connections || 6));
+  const minChunk = Math.max(65536, o.minChunkSize || (4 * 1024 * 1024));
+  const timeoutMs = o.timeoutMs || 300000;
+  const notify = (p) => { try { if (onProgress) onProgress(p); } catch (_) {} };
+
+  // 1) 探测:是否支持 Range + 总大小(Range: bytes=0-0 → 206 + content-range)
+  const probe = await new Promise((resolve) => {
+    requestStream(url, { 'User-Agent': UA, Range: 'bytes=0-0' }, (err, res) => {
+      if (err) return resolve({ ok: false, error: err.message || '网络错误' });
+      if (res.statusCode === 206) {
+        const cr = String(res.headers['content-range'] || '');
+        const m = cr.match(/\/(\d+)\s*$/);
+        res.resume();
+        return resolve({ ok: true, ranges: true, size: m ? Number(m[1]) : 0 });
+      }
+      const size = Number(res.headers['content-length']) || 0;
+      res.resume();
+      resolve({ ok: true, ranges: false, size });
+    }, 5, 20000);
+  });
+  if (!probe.ok) return probe;
+  if (!probe.ranges || !probe.size) {
+    // 不支持断点分块:退化为单流下载
+    return await downloadFile(url, destPath, onProgress, timeoutMs);
+  }
+  const size = probe.size;
+
+  // 2) 分块:每块 ≥ minChunkSize,块数不超过连接数
+  const chunkCount = Math.max(1, Math.min(maxConn, Math.ceil(size / minChunk)));
+  const chunkSize = Math.ceil(size / chunkCount);
+
+  let fd;
+  try {
+    try { fs.mkdirSync(path.dirname(destPath), { recursive: true }); } catch (_) {}
+    try { fs.rmSync(destPath, { force: true }); } catch (_) {}
+    fd = fs.openSync(destPath, 'w');
+    fs.ftruncateSync(fd, size);
+  } catch (e) {
+    try { if (fd !== undefined) fs.closeSync(fd); } catch (_) {}
+    try { fs.rmSync(destPath, { force: true }); } catch (_) {}
+    return { ok: false, error: '创建文件失败: ' + ((e && e.message) || e) };
+  }
+
+  let received = 0;
+  let winStart = Date.now();
+  let winBytes = 0;
+  let lastReport = 0;
+  let lastErr = null;
+  const report = (force) => {
+    const now = Date.now();
+    if (!force && now - lastReport < 200) return;
+    lastReport = now;
+    const bps = winBytes > 0 ? Math.round(winBytes / Math.max(0.001, (now - winStart) / 1000)) : 0;
+    winStart = now; winBytes = 0;
+    notify({ percent: Math.round((received / size) * 100), transferred: received, total: size, bytesPerSecond: bps });
+  };
+
+  // 单个分块:失败整块重试(覆盖写同一段 Range),最多 3 次
+  const downloadChunk = (idx) => new Promise((resolveChunk) => {
+    const start = idx * chunkSize;
+    const end = Math.min(size, start + chunkSize) - 1;
+    if (start > end) return resolveChunk(true);
+      const attempt = (n) => {
+        let pos = start;
+        let settled = false;
+        const finish = (ok, errMsg) => {
+          if (settled) return;
+          settled = true;
+          if (errMsg) lastErr = errMsg;
+          if (ok) return resolveChunk(true);
+          if (n < 2) return setTimeout(() => attempt(n + 1), 400 * (n + 1));
+          resolveChunk(false);
+        };
+      requestStream(url, { 'User-Agent': UA, Range: 'bytes=' + start + '-' + end }, (err, res) => {
+        if (err) return finish(false, err.message);
+        if (res.statusCode !== 206) { res.resume(); return finish(false, 'HTTP ' + res.statusCode); }
+        res.on('data', (c) => {
+          try { fs.writeSync(fd, c, 0, c.length, pos); } catch (e) { res.destroy(); return finish(false, e.message); }
+          pos += c.length; received += c.length; winBytes += c.length;
+          report(false);
+        });
+        res.on('end', () => finish(pos >= end)); // 提前断开视为失败(整块重试)
+        res.on('error', (e) => finish(false, e.message));
+      }, 5, timeoutMs);
+    };
+    attempt(0);
+  });
+
+  const results = await Promise.all(Array.from({ length: chunkCount }, (_, i) => downloadChunk(i)));
+  try { fs.closeSync(fd); } catch (_) {}
+  const allOk = results.every(Boolean);
+  if (!allOk) {
+    try { fs.rmSync(destPath, { force: true }); } catch (_) {}
+    return { ok: false, error: lastErr || '分块下载失败(部分分块未完成)' };
+  }
+  report(true);
+  return { ok: true, size, connections: chunkCount, transferred: size };
 }
 
 // ================= 流式下载(跟随重定向,带进度回调) =================
@@ -308,6 +432,7 @@ module.exports = {
   versionsEqual,
   checkLatest,
   downloadFile,
+  downloadFileParallel,
   extractAndVerify,
   swapDir,
   getCurrentVersion,

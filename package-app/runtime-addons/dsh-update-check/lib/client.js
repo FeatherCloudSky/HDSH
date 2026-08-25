@@ -90,26 +90,54 @@ window.__ModuleLoader__.load({
 			return 0;
 		}
 
-		// ---- 框架一键自动更新:订阅 electron-updater 事件 → 组件状态机 ----
+		// ---- 框架标准通道事件(electron-updater;一键更新回退到标准下载时使用) ----
 		function subscribeUpdater(setState) {
 			if (!window || !window.hdsh || !window.hdsh.onUpdateEvent) return () => {};
 			return window.hdsh.onUpdateEvent((ev) => {
 				setState((prev) => {
 					switch (ev.type) {
-						case "checking-for-update":
-							return { ...prev, phase: "checking", error: null };
-						case "update-available":
-							return { ...prev, phase: "checked", latest: ev.version, error: null };
-						case "update-not-available":
-							return { ...prev, phase: "checked", latest: null, error: null };
 						case "download-progress":
 							return { ...prev, phase: "downloading", percent: typeof ev.percent === "number" ? ev.percent : prev.percent, error: null };
 						case "update-downloaded":
-							// 下载完成 → 提示后自动安装并重启
+							// 标准通道下载完成 → 提示后自动安装并重启
 							setTimeout(() => {
 								if (window.hdsh && window.hdsh.installUpdate) window.hdsh.installUpdate().catch(() => {});
 							}, 1800);
 							return { ...prev, phase: "installing", error: null };
+						case "error":
+							if (prev.phase === "downloading" || prev.phase === "installing") {
+								return { ...prev, phase: "error", error: ev.message || "更新失败" };
+							}
+							return prev;
+						default:
+							return prev;
+					}
+				});
+			});
+		}
+
+		// ---- 统一更新事件(主进程编排:修复 WebUI → 加速下载 → 校验 → 安装) ----
+		function subscribeAll(setState) {
+			if (!window || !window.hdsh || !window.hdsh.onUpdateAllEvent) return () => {};
+			return window.hdsh.onUpdateAllEvent((ev) => {
+				setState((prev) => {
+					switch (ev.type) {
+						case "repairing":
+							return { ...prev, phase: "repairing", repairVersion: ev.version || prev.repairVersion, error: null };
+						case "repair-downloading":
+							return { ...prev, phase: "repairing", percent: typeof ev.percent === "number" ? ev.percent : prev.percent, error: null };
+						case "extracting":
+							return { ...prev, phase: "repairing", percent: 100, error: null };
+						case "downloading":
+							return { ...prev, phase: "downloading", percent: typeof ev.percent === "number" ? ev.percent : prev.percent, speed: typeof ev.bytesPerSecond === "number" ? ev.bytesPerSecond : null, error: null };
+						case "verifying":
+							return { ...prev, phase: "verifying", error: null };
+						case "installing":
+							return { ...prev, phase: "installing", error: null };
+						case "fallback":
+							return { ...prev, phase: "downloading", percent: 0, tip: "加速通道不可用,已切换标准通道下载…", error: null };
+						case "done":
+							return { ...prev, phase: "done", error: null };
 						case "error":
 							return { ...prev, phase: "error", error: ev.message || "更新失败" };
 						default:
@@ -119,93 +147,30 @@ window.__ModuleLoader__.load({
 			});
 		}
 
-		function doCheckFramework(setState) {
-			setState({ phase: "checking", current: null, latest: null, percent: 0, error: null, dismissed: false });
-			if (window && window.hdsh && window.hdsh.getVersions) {
-				window.hdsh.getVersions().then((v) => {
-					setState((prev) => ({ ...prev, current: (v && v.framework) || null }));
-				}).catch(() => {});
-			}
-			if (window && window.hdsh && window.hdsh.checkUpdate) {
-				window.hdsh.checkUpdate().catch((e) => {
-					setState((prev) => ({ ...prev, phase: "error", error: String((e && e.message) || e) }));
-				});
-			} else {
-				setState((prev) => ({ ...prev, phase: "error", error: "更新通道不可用" }));
-			}
-		}
-
-		function doUpdateFramework(setState) {
-			setState((prev) => ({ ...prev, phase: "downloading", percent: 0, error: null }));
-			if (window.hdsh && window.hdsh.downloadUpdate) {
-				window.hdsh.downloadUpdate().catch((e) => {
-					setState((prev) => ({ ...prev, phase: "error", error: String((e && e.message) || e) }));
-				});
-			}
-		}
-
-		function doCheckWebui(setState) {
-			setState({ phase: "checking", result: null, error: null, msg: null, dismissed: false });
+		function doCheckAll(setState) {
+			setState({ phase: "checking", check: null, percent: 0, speed: null, tip: null, error: null, dismissed: false, repairVersion: null });
 			const hdsh = (window && window.hdsh) || {};
-			if (!hdsh.webuiCheck) {
-				return setState({ phase: "error", result: null, error: "当前版本不支持单独更新 WebUI,请先升级框架", msg: null, dismissed: false });
+			if (!hdsh.checkAll) {
+				return setState({ phase: "error", check: null, error: "当前版本不支持统一更新,请先升级框架", dismissed: false });
 			}
-			hdsh.webuiCheck().then((res) => {
-				if (!res) return setState({ phase: "error", result: null, error: "无响应", msg: null, dismissed: false });
-				if (!res.ok) return setState({ phase: "error", result: res, error: res.error || "检查失败", msg: null, dismissed: false });
-				setState({ phase: "checked", result: res, error: null, msg: null, dismissed: false });
+			hdsh.checkAll().then((res) => {
+				if (!res || !res.ok) {
+					return setState({ phase: "error", check: res || null, error: (res && res.error) || "检查失败", dismissed: false });
+				}
+				setState({ phase: "ready", check: res, error: null, dismissed: false });
 			}).catch((e) => {
-				setState({ phase: "error", result: null, error: String((e && e.message) || e), msg: null, dismissed: false });
+				setState({ phase: "error", check: null, error: String((e && e.message) || e), dismissed: false });
 			});
 		}
 
-		// 点击「立即更新」:下载目标版本;后续阶段由 onWebuiEvent 驱动
-		function doUpdateWebui(setState, version) {
+		function doRunAll(setState) {
 			const hdsh = (window && window.hdsh) || {};
-			if (!hdsh.webuiDownload || !hdsh.webuiInstall) {
+			if (!hdsh.runUpdateAll) {
 				return setState((prev) => ({ ...prev, phase: "error", error: "更新通道不可用" }));
 			}
-			if (!version) {
-				return setState((prev) => ({ ...prev, phase: "error", error: "缺少目标版本" }));
-			}
-			setState((prev) => ({ ...prev, phase: "downloading", percent: 0, error: null, dismissed: false, tip: "正在下载 WebUI 更新包…" }));
-			hdsh.webuiDownload(version).catch((e) => {
+			setState((prev) => ({ ...prev, phase: "preparing", percent: 0, speed: null, error: null, tip: null, dismissed: false }));
+			hdsh.runUpdateAll().catch((e) => {
 				setState((prev) => ({ ...prev, phase: "error", error: String((e && e.message) || e) }));
-			});
-		}
-
-		// WebUI 更新事件订阅:下载进度 / 解压 / 下载完成(自动进入安装) / 完成 / 错误
-		function subscribeWebui(setState) {
-			if (!window || !window.hdsh || !window.hdsh.onWebuiEvent) return () => {};
-			let installing = false;
-			return window.hdsh.onWebuiEvent((ev) => {
-				setState((prev) => {
-					switch (ev.type) {
-						case "downloading":
-							return { ...prev, phase: "downloading", percent: typeof ev.percent === "number" ? ev.percent : prev.percent, error: null, tip: "正在下载 WebUI 更新包…" };
-						case "extracting":
-							return { ...prev, phase: "downloading", percent: 100, error: null, tip: "正在解压校验…" };
-						case "downloaded":
-							// 下载+校验完成 → 自动应用(替换 dist + 重启服务)
-							if (!installing) {
-								installing = true;
-								setTimeout(() => {
-									if (window.hdsh && window.hdsh.webuiInstall) {
-										window.hdsh.webuiInstall().catch(() => {});
-									}
-								}, 300);
-							}
-							return { ...prev, phase: "installing", error: null, tip: "正在应用更新并重启服务…" };
-						case "installing":
-							return { ...prev, phase: "installing", error: null, tip: "正在应用更新并重启服务…" };
-						case "done":
-							return { ...prev, phase: "done", latest: ev.version || prev.latest, error: null, tip: "已更新,界面即将刷新" };
-						case "error":
-							return { ...prev, phase: "error", error: ev.message || "更新失败", tip: null };
-						default:
-							return prev;
-					}
-				});
 			});
 		}
 
@@ -215,146 +180,130 @@ window.__ModuleLoader__.load({
 			}
 		}
 
-		// ---- 框架组渲染(转圈 + tips + 进度条) ----
-		function renderFrameworkGroup(state, setState) {
+		// ---- 统一渲染:一次检查,分行显示框架 / WebUI 版本号,一键完成全部更新 ----
+		function renderUnified(state, setState) {
 			const h = react.createElement;
-			const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
+			const busy = ["checking", "preparing", "repairing", "downloading", "verifying", "installing"].indexOf(state.phase) !== -1;
 			const els = [];
 			els.push(h("div", { className: "updchk-line" },
 				h("div", { className: "updchk-info" },
-					h("div", { className: "updchk-name" }, "本框架(HelloDeepseekHarness / HDSH)"),
-					h("div", { className: "updchk-repo" }, "发布源:github.com/FeatherCloudSky/HDSH Releases")
+					h("div", { className: "updchk-name" }, "框架(HelloDeepseekHarness)+ WebUI(官方界面)"),
+					h("div", { className: "updchk-repo" }, "框架源:HDSH Releases · WebUI 源:官方 npm")
 				),
-				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckFramework(setState) },
-					state.phase === "checking" ? "检查中…" : "检查框架更新")
+				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckAll(setState) },
+					state.phase === "checking" ? "检查中…" : "一键检查更新")
 			));
-			els.push(h("div", { className: "updchk-note" }, "一键自动更新:发现新版本后点击「立即更新」,自动下载、安装并重启应用,无需手动前往官网下载。"));
+			els.push(h("div", { className: "updchk-note" }, "一次检查框架与 WebUI 的新版本(分开显示版本号),检测到任一新版本都会提示;一键更新自动完成:先修复 WebUI(如需)→ 下载新框架(多连接加速)→ 校验 → 静默安装并重启。"));
 
 			if (state.phase === "idle") {
 				els.push(h("div", { className: "updchk-status" }, "未检查 · 点击上方按钮开始"));
 			} else if (state.phase === "checking") {
 				els.push(h("div", { className: "updchk-status" },
 					h("span", { className: "updchk-spinner" }),
-					"正在检查更新…"));
-			} else if (state.phase === "checked") {
-				const cur = state.current ? "v" + state.current : "未知";
-				if (state.latest) {
-					els.push(h("div", { className: "updchk-vers" }, "当前版本:" + cur + "　·　最新版本:v" + state.latest));
+					"正在检查框架与 WebUI 更新…"));
+			} else if (state.phase === "error") {
+				els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "更新失败")));
+				els.push(h("button", { className: "updchk-link", onClick: () => openRepo({ repoUrl: "https://github.com/FeatherCloudSky/HDSH/releases/latest", repoLabel: "HDSH 发布页" }) }, "打开 HDSH 发布页 ↗"));
+			} else if (state.phase === "ready") {
+				const c = state.check || {};
+				const fw = c.framework || {};
+				const wb = c.webui || {};
+				// 框架行
+				let fwText;
+				if (fw.skipped) fwText = "开发模式,跳过检查";
+				else if (fw.error) fwText = "检查失败(" + fw.error + ")";
+				else if (fw.updateAvailable) fwText = "当前 v" + fw.current + " · 最新 v" + fw.latest;
+				else fwText = "当前 v" + (fw.current || "?") + " · 已是最新";
+				els.push(h("div", { className: "updchk-vers" },
+					h("span", null, "【框架】" + fwText),
+					fw.error ? h("span", { className: "updchk-err" }, "　✗")
+						: fw.updateAvailable ? h("span", { className: "updchk-warn" }, "　⚠ 可更新")
+						: h("span", { className: "updchk-ok" }, "　✓")
+				));
+				// WebUI 行
+				let wbText;
+				let wbCls = "updchk-ok";
+				let wbMark = "✓";
+				if (wb.error) {
+					wbText = "检查失败(" + wb.error + ")";
+					wbCls = "updchk-err"; wbMark = "✗";
+				} else if (wb.mismatch && wb.repairVersion) {
+					wbText = "当前 " + wb.current + " · 与服务端 " + wb.server + " 不匹配,将修复为 v" + wb.repairVersion;
+					wbCls = "updchk-warn"; wbMark = "⚠";
+				} else if (wb.needFrameworkUpdate && wb.officialLatest) {
+					if (fw.updateAvailable) {
+						wbText = "当前 " + wb.current + " · 官方最新 " + wb.officialLatest + "(将随框架 v" + fw.latest + " 一并安装)";
+					} else {
+						wbText = "当前 " + wb.current + " · 官方最新 " + wb.officialLatest + "(需配套新框架,请等待框架发布)";
+						wbCls = "updchk-warn"; wbMark = "⚠";
+					}
+				} else {
+					wbText = "当前 " + (wb.current || "?") + " · 已与服务端配套";
+				}
+				els.push(h("div", { className: "updchk-vers" },
+					h("span", null, "【WebUI】" + wbText),
+					h("span", { className: wbCls }, "　" + wbMark)
+				));
+				// 更新确认 / 状态
+				if (c.anyUpdate) {
 					if (!state.dismissed) {
+						const items = [];
+						if (fw.updateAvailable) items.push("框架 → v" + fw.latest);
+						if (wb.mismatch && wb.repairVersion) items.push("WebUI 修复 → v" + wb.repairVersion);
 						els.push(h("div", { className: "updchk-confirm" },
-							h("span", { className: "updchk-warn" }, "⚠ 发现新版本,是否立即更新?"),
-							h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doUpdateFramework(setState) }, "立即更新"),
+							h("span", { className: "updchk-warn" }, "⚠ 发现 " + items.length + " 项更新:" + items.join("、") + ",是否一键更新?"),
+							h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doRunAll(setState) }, "一键更新"),
 							h("button", { className: "updchk-btn", onClick: () => setState((prev) => ({ ...prev, dismissed: true })) }, "暂不更新")
 						));
 					} else {
 						els.push(h("div", { className: "updchk-status updchk-warn" }, "已忽略本次更新提醒(可再次点击按钮重新检测)"));
 					}
 				} else {
-					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已是最新版本 " + cur));
+					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 框架与 WebUI 均为最新"));
 				}
+			} else if (state.phase === "preparing") {
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner" }), "正在准备更新…"));
+			} else if (state.phase === "repairing") {
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner updchk-spinner-big" }),
+					h("span", null, "正在修复 WebUI" + (state.repairVersion ? "(→ v" + state.repairVersion + ")" : "") + "… " + (state.percent > 0 ? state.percent + "%" : ""))));
+				els.push(h("div", { className: "updchk-progress" },
+					h("i", { style: { width: (state.percent || 0) + "%" } })));
+				els.push(h("div", { className: "updchk-tip" }, "下载与当前框架服务端配套的界面并替换"));
 			} else if (state.phase === "downloading") {
 				els.push(h("div", { className: "updchk-status" },
 					h("span", { className: "updchk-spinner updchk-spinner-big" }),
-					h("span", null, "正在下载更新… " + (typeof state.percent === "number" ? state.percent + "%" : ""))));
+					h("span", null, "正在下载框架更新… " + (typeof state.percent === "number" ? state.percent + "%" : "")
+						+ (state.speed ? "(" + (state.speed / 1048576).toFixed(1) + " MB/s)" : ""))));
 				els.push(h("div", { className: "updchk-progress" },
 					h("i", { style: { width: (typeof state.percent === "number" ? state.percent : 0) + "%" } })));
-				els.push(h("div", { className: "updchk-tip" }, "下载期间请保持应用开启,可继续使用其它功能"));
+				els.push(h("div", { className: "updchk-tip" }, state.tip || "多连接加速下载,期间可继续使用其它功能"));
+			} else if (state.phase === "verifying") {
+				els.push(h("div", { className: "updchk-status" },
+					h("span", { className: "updchk-spinner updchk-spinner-big" }), "正在校验安装包完整性…"));
 			} else if (state.phase === "installing") {
 				els.push(h("div", { className: "updchk-status" },
 					h("span", { className: "updchk-spinner updchk-spinner-big" }),
 					h("span", null, "下载完成,正在安装…")));
-				els.push(h("div", { className: "updchk-tip" }, "安装完成后应用将自动重启,请稍候"));
-			} else if (state.phase === "error") {
-				els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "更新失败")));
-				els.push(h("button", { className: "updchk-link", onClick: () => openRepo({ repoUrl: "https://github.com/FeatherCloudSky/HDSH/releases/latest", repoLabel: "HDSH 发布页" }) }, "打开 HDSH 发布页 ↗"));
-			}
-			return h("div", { className: "updchk-group" }, els);
-		}
-
-		// ---- WebUI 组渲染 ----
-		function renderWebuiGroup(state, setState) {
-			const h = react.createElement;
-			const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
-			const result = state.result;
-			const els = [];
-			els.push(h("div", { className: "updchk-line" },
-				h("div", { className: "updchk-info" },
-					h("div", { className: "updchk-name" }, "WebUI(官方 DeepSeek Harness 界面)"),
-					h("div", { className: "updchk-repo" }, "来源:官方 npm @deepseek-ai/dsh-web-frontend")
-				),
-				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckWebui(setState) },
-					state.phase === "checking" ? "检查中…" : "检查 WebUI 更新")
-			));
-			els.push(h("div", { className: "updchk-note" }, "WebUI 界面与框架服务端强配套(跨版本会无法启动)。单独更新仅用于修复/重装与当前框架配套的界面;官方新版界面请通过「检查框架更新」升级框架后自动获得。"));
-
-			if (state.phase === "idle") {
-				els.push(h("div", { className: "updchk-status" }, "未检查 · 点击上方按钮开始"));
-			} else if (state.phase === "checking") {
-				els.push(h("div", { className: "updchk-status" },
-					h("span", { className: "updchk-spinner" }),
-					"正在检查更新…"));
-			} else if (state.phase === "error") {
-				els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "检查失败")));
-				if (result && result.repoUrl) {
-					els.push(h("button", { className: "updchk-link", onClick: () => openRepo(result) }, "打开" + (result.repoLabel || "仓库") + " ↗"));
-				}
-			} else if (state.phase === "checked") {
-				const cur = result && result.current ? result.current : "未知";
-				const srv = result && result.server ? result.server : "未知";
-				const fixVer = result && result.compatibleLatest ? result.compatibleLatest : null;
-				const offVer = result && result.officialLatest ? result.officialLatest : null;
-				els.push(h("div", { className: "updchk-vers" }, "当前界面:" + cur + "　·　框架服务端:" + srv));
-				if (result && result.updateAvailable && fixVer) {
-					// 当前前端与服务端不配套 → 恢复为框架配套版本
-					if (!state.dismissed) {
-						els.push(h("div", { className: "updchk-confirm" },
-							h("span", { className: "updchk-warn" }, "⚠ 当前界面版本与框架服务端不匹配,是否恢复为框架配套界面?"),
-							h("button", { className: "updchk-btn updchk-btn-primary", onClick: () => doUpdateWebui(setState, fixVer) }, "恢复"),
-							h("button", { className: "updchk-btn", onClick: () => setState((prev) => ({ ...prev, dismissed: true })) }, "暂不")
-						));
-					} else {
-						els.push(h("div", { className: "updchk-status updchk-warn" }, "已忽略本次恢复提醒(可再次点击按钮重新检测)"));
-					}
-				} else {
-					els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已是最新(与当前框架配套)"));
-					if (result && result.needFrameworkUpdate && offVer) {
-						els.push(h("div", { className: "updchk-status updchk-warn" }, "官方新版界面 v" + offVer + " 需要配套新框架,请使用「检查框架更新」升级(升级后自动获得)"));
-					}
-				}
-				if (result && result.repoUrl && !(result.updateAvailable)) {
-					els.push(h("button", { className: "updchk-link", onClick: () => openRepo(result) }, "打开" + (result.repoLabel || "仓库") + " ↗"));
-				}
-			} else if (state.phase === "downloading") {
-				els.push(h("div", { className: "updchk-status" },
-					h("span", { className: "updchk-spinner updchk-spinner-big" }),
-					h("span", null, "正在下载 WebUI 更新… " + (typeof state.percent === "number" ? state.percent + "%" : ""))));
-				els.push(h("div", { className: "updchk-progress" },
-					h("i", { style: { width: (typeof state.percent === "number" ? state.percent : 0) + "%" } })));
-				els.push(h("div", { className: "updchk-tip" }, state.tip || "下载期间可继续使用其它功能"));
-			} else if (state.phase === "installing") {
-				els.push(h("div", { className: "updchk-status" },
-					h("span", { className: "updchk-spinner updchk-spinner-big" }),
-					h("span", null, "正在应用更新并重启服务…")));
-				els.push(h("div", { className: "updchk-tip" }, "正在替换界面文件并重启本地服务,请稍候"));
+				els.push(h("div", { className: "updchk-tip" }, "应用将自动重启并完成安装,请稍候"));
 			} else if (state.phase === "done") {
-				els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 已应用 " + (state.latest || "框架配套界面") + ",界面即将刷新"));
+				els.push(h("div", { className: "updchk-status updchk-ok" }, "✓ 更新完成"));
 			}
 			return h("div", { className: "updchk-group" }, els);
 		}
 
 		function UpdateRow() {
 			const h = react.createElement;
-			const [framework, setFramework] = react.useState({ phase: "idle", current: null, latest: null, percent: 0, error: null, dismissed: false });
-			const [webui, setWebui] = react.useState({ phase: "idle", result: null, error: null, msg: null, dismissed: false });
-			react.useEffect(() => subscribeUpdater(setFramework), []);
-			react.useEffect(() => subscribeWebui(setWebui), []);
+			const [st, setSt] = react.useState({ phase: "idle", check: null, percent: 0, speed: null, tip: null, error: null, dismissed: false, repairVersion: null });
+			react.useEffect(() => subscribeUpdater(setSt), []);
+			react.useEffect(() => subscribeAll(setSt), []);
 			return h("div", { className: "updchk-row" },
 				h("div", { className: "updchk-head" },
 					h("div", { className: "updchk-title" }, "更新检测"),
-					h("div", { className: "updchk-desc" }, "一键自动更新框架;WebUI 界面与框架配套,异常时可单独修复/恢复。发现新版本时会询问是否更新。")
+					h("div", { className: "updchk-desc" }, "一键检查并更新框架与 WebUI:检测到任一新版本都会提示(分开显示版本号),一键完成全部更新操作。")
 				),
-				renderFrameworkGroup(framework, setFramework),
-				renderWebuiGroup(webui, setWebui)
+				renderUnified(st, setSt)
 			);
 		}
 

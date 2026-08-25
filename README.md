@@ -11,9 +11,10 @@
 - **秒速启动**：窗口先行显示内嵌启动画面，后台拉起服务、就绪即切入主界面，消除冷启动空窗（v1.0.2）
 - **鲸鱼 logo**：启动画面与标题栏品牌均使用 DeepSeek 鲸鱼真实图标（v1.0.3）
 - **启动提示**：加载时循环播放趣味提示，渐显渐隐过渡（v1.0.3）
+- **统一更新检测**：设置 → 通用设置 → 一键检查更新，同时检查框架与 WebUI 新版本（分开显示版本号），检测到任一新版本都会提示；「一键更新」自动完成全部更新：先修复 WebUI（如需）→ 下载新框架 → 校验 → 静默安装并重启（v1.4.0）
+- **框架更新提速**：多连接分块下载（6 线程 Range 并发）+ SHA-512 完整性校验 + 静默安装；加速通道不可用时自动回退 electron-updater 标准单线程通道（v1.4.0）
 - **一键自动更新**：设置 → 通用设置 → 检查框架更新 → 发现新版本后点击「立即更新」，自动下载（转圈 + 进度条 + 提示）、安装并重启应用，全程无需手动前往官网下载（v1.2.0）
 - **WebUI 更新与自愈**：设置 → 通用设置 → 检查 WebUI 更新，可修复/重装与当前框架配套的界面（替换运行时 dist、重启本地服务，无需重装框架）；启动时自动校验前端与服务端版本，不匹配自动恢复（v1.3.x）
-- **内置更新检测**：设置 → 通用设置 中两个独立按钮，分别检查 WebUI（官方 deepseek-ai 仓库）与本框架（HDSH 仓库）的新版本；发现新版本时询问是否更新（v1.1.0）
 - **纯净圆角**：关闭系统原生圆角，悬浮窗四角真正透明、无第二道弧线残边（v1.0.2）
 - **零依赖**：内置 Node.js 与 dsh 运行时，无需预装任何环境
 - **数据保留**：卸载不删除用户数据（会话、配置、插件）
@@ -21,9 +22,9 @@
 
 ## 下载
 
-**最新版本：v1.3.1**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.3.1)）
+**最新版本：v1.4.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.4.0)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.3.1.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.4.0.exe`。
 
 | 项 | 要求 |
 |---|---|
@@ -34,7 +35,7 @@
 
 ## 安装
 
-1. 双击 `HelloDeepseekHarness-Setup-1.3.1.exe`，按向导操作；
+1. 双击 `HelloDeepseekHarness-Setup-1.4.0.exe`，按向导操作；
 2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\HelloDeepseekHarness`）；
 3. 向导自动创建桌面快捷方式与开始菜单项；
 4. 安装完成后自动启动应用。

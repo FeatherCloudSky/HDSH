@@ -40,6 +40,22 @@ contextBridge.exposeInMainWorld('hdsh', {
     const listener = (_e, data) => { try { cb(data); } catch (_) {} };
     ipcRenderer.on('hdsh:webui-event', listener);
     return () => ipcRenderer.removeListener('hdsh:webui-event', listener);
+  },
+  // ---- 统一更新(框架 + WebUI 一次检查、一键完成) ----
+  // 一次检查框架与 WebUI:→ { ok, framework:{current,latest,updateAvailable,skipped,error},
+  //   webui:{current,server,officialLatest,mismatch,repairVersion,needFrameworkUpdate,error},
+  //   actions:['webui-repair'?,'framework-update'?], anyUpdate }
+  checkAll: () => ipcRenderer.invoke('hdsh:check-all'),
+  // 一键完成全部更新:修复 WebUI(如需)→ 加速下载框架 → 校验 → 静默安装重启
+  runUpdateAll: () => ipcRenderer.invoke('hdsh:update-all-run'),
+  // 订阅统一更新事件:cb({ type, ... }) → 返回退订函数
+  // type: repairing({ version }) | repair-downloading({ percent }) | extracting
+  //       | downloading({ percent, bytesPerSecond }) | verifying | installing
+  //       | fallback({ message }) | done | error({ message })
+  onUpdateAllEvent: (cb) => {
+    const listener = (_e, data) => { try { cb(data); } catch (_) {} };
+    ipcRenderer.on('hdsh:update-all-event', listener);
+    return () => ipcRenderer.removeListener('hdsh:update-all-event', listener);
   }
 });
 
