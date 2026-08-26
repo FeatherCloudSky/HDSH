@@ -187,7 +187,7 @@ window.__ModuleLoader__.load({
 			const els = [];
 			els.push(h("div", { className: "updchk-line" },
 				h("div", { className: "updchk-info" },
-					h("div", { className: "updchk-name" }, "框架(HelloDeepseekHarness)+ WebUI(官方界面)"),
+					h("div", { className: "updchk-name" }, "框架(WhaleBox)+ WebUI(官方界面)"),
 					h("div", { className: "updchk-repo" }, "框架源:HDSH Releases · WebUI 源:官方 npm")
 				),
 				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckAll(setState) },

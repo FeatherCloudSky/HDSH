@@ -1,4 +1,4 @@
-// HelloDeepseekHarness 独立 App — 主进程
+// WhaleBox 鲸盒 独立 App — 主进程
 // 职责:内置 node 拉起 dsh web 服务(端口 8898)、用户数据目录管理、
 //       无边框玻璃窗口、窗口控制 IPC、单实例防重复、关窗即停服。
 // 启动策略:窗口先行(内嵌启动画面),服务后台拉起,就绪即换真实界面。
@@ -12,9 +12,9 @@ const { spawn, spawnSync } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const webuiUpdate = require('./webui-update.js');
 
-const APP_NAME = 'HelloDeepseekHarness';
+const APP_NAME = 'WhaleBox';
 app.setName(APP_NAME);
-app.setAppUserModelId('HelloDeepseekHarness');
+app.setAppUserModelId('WhaleBox');
 
 // 端口可配置(测试用;正式固定 8898)
 const PORT = Number(process.env.DSH_PORT || 8898);
@@ -41,7 +41,7 @@ background:rgba(245,242,234,.92);border:1px solid rgba(160,150,130,.35);box-shad
 @keyframes s{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
 .err .tip{color:#b3403a}.err .bar i{animation:none;width:100%;background:#c25650}
 </style></head><body><div class="card"><div class="logo"><img src="${LOGO_URI}" alt=""></div>
-<div class="t">HelloDeepseekHarness</div><div class="tip hide" id="tip">正在初始化…</div>
+<div class="t">WhaleBox 鲸盒</div><div class="tip hide" id="tip">正在初始化…</div>
 <div class="bar"><i></i></div></div>
 <script>
 var tips=['正在初始化…','正在拉起本地运行时…','正在唤醒 DeepSeek Harness…','正在准备工具链…','正在连接本地服务…','稍等片刻，即将就绪…','正在加载界面…'];
@@ -183,7 +183,7 @@ function ensureUpdateCheckInProfile() {
 function downloadFramework(url, fileName) {
   return new Promise((resolve) => {
     if (!url || !/^https?:/i.test(String(url))) return resolve({ ok: false, message: '缺少安装包下载地址' });
-    const safe = String(fileName || 'HelloDeepseekHarness-Setup.exe').replace(/[^0-9A-Za-z.\-() ]/g, '');
+    const safe = String(fileName || 'WhaleBox-Setup.exe').replace(/[^0-9A-Za-z.\-() ]/g, '');
     const script = "$ProgressPreference='SilentlyContinue'; "
       + "$dl=Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'; "
       + 'if(-not(Test-Path $dl)){New-Item -ItemType Directory -Force -Path $dl|Out-Null}; '
@@ -203,16 +203,16 @@ function downloadFramework(url, fileName) {
 }
 
 // 用户数据目录(会话/设置/插件),独立于安装目录 → 覆盖安装/卸载都不丢
-// 开发模式:项目下 dev-data/ 便于测试;打包后:%APPDATA%\HelloDeepseekHarness\dsh-home
+// 开发模式:项目下 dev-data/ 便于测试;打包后:%APPDATA%\WhaleBox\dsh-home
 const DSH_HOME = () => {
   if (!app.isPackaged) return path.join(__dirname, '..', 'dev-data', 'dsh-home');
-  return path.join(app.getPath('appData'), 'HelloDeepseekHarness', 'dsh-home');
+  return path.join(app.getPath('appData'), 'WhaleBox', 'dsh-home');
 };
 
 // userData 重定向(Chromium 缓存/会话等)
 const udArg = process.argv.find(a => a.startsWith('--userdata-dir='));
 const USER_DATA = udArg ? udArg.slice(15) : (app.isPackaged
-  ? path.join(app.getPath('appData'), 'HelloDeepseekHarness', 'user-data')
+  ? path.join(app.getPath('appData'), 'WhaleBox', 'user-data')
   : path.join(__dirname, '..', 'dev-data', 'user-data'));;
 try { app.setPath('userData', USER_DATA); } catch (_) {}
 
@@ -333,6 +333,31 @@ function migrateLegacyData() {
       console.log('[migrate] done');
     }
   } catch (e) { console.error('[migrate] failed: ' + e.message); }
+}
+
+// 旧品牌(HelloDeepseekHarness)用户数据目录:直接覆盖升级时,把旧数据整目录迁到新品牌目录
+// (dsh-home 会话/配置 + user-data);复制保留旧目录作备份,迁移成功后打标记不再重复。
+const OLD_APP_DATA = path.join(app.getPath('appData'), 'HelloDeepseekHarness');
+
+function migrateOldAppData() {
+  const root = path.join(app.getPath('appData'), 'WhaleBox');
+  try { fs.mkdirSync(root, { recursive: true }); } catch (_) {}
+  const flagPath = path.join(root, MIGRATED_FLAG + '-appdata');
+  if (fs.existsSync(flagPath)) return; // 已迁移过
+  if (!fs.existsSync(OLD_APP_DATA)) {
+    try { fs.writeFileSync(flagPath, 'none'); } catch (_) {}
+    return;
+  }
+  console.log('[migrate] copying old app data from ' + OLD_APP_DATA + ' -> ' + root);
+  try {
+    const cp = spawnSync('robocopy', [OLD_APP_DATA, root, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS'], { stdio: 'ignore', timeout: 180000 });
+    console.log('[migrate] appdata robocopy exit=' + cp.status);
+    // robocopy 0-7 都是成功;>=8 才是失败
+    if (cp.status !== void 0 && cp.status < 8) {
+      fs.writeFileSync(flagPath, OLD_APP_DATA);
+      console.log('[migrate] appdata done');
+    }
+  } catch (e) { console.error('[migrate] appdata failed: ' + e.message); }
 }
 
 // ================= 单实例锁 =================
@@ -794,6 +819,7 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     // 1. 迁移旧数据(仅首次;之后只是两次存在性检查,不阻塞)
+    migrateOldAppData();
     migrateLegacyData();
     // 2. 先开窗口(显示启动画面),不等服务
     createWindow();

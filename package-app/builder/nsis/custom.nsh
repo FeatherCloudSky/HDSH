@@ -1,4 +1,4 @@
-; HelloDeepseekHarness NSIS custom script
+; WhaleBox 鲸盒 NSIS custom script
 ; - OS version check (Win10/11)
 ; - VC++ runtime check (prompt user if missing)
 ; included by electron-builder via nsis.include
@@ -10,7 +10,7 @@
 !macro customInit
   ; 1. OS version: require Win10 (NT 10.0) or later
   ${IfNot} ${AtLeastWin10}
-    MessageBox MB_OK|MB_ICONSTOP "HelloDeepseekHarness needs Windows 10 or Windows 11.`r`nThis system is too old. Setup cancelled."
+    MessageBox MB_OK|MB_ICONSTOP "WhaleBox needs Windows 10 or Windows 11.`r`nThis system is too old. Setup cancelled."
     Abort
   ${EndIf}
 
@@ -34,7 +34,7 @@
 
   vc_missing:
     ${IfNot} ${Silent}
-      MessageBox MB_YESNO|MB_ICONQUESTION "Microsoft VC++ Runtime (2015-2022 x64) seems missing.`r`nHelloDeepseekHarness needs it to run.`r`n`r`nOpen the official Microsoft download page now?" IDYES open_vc IDNO vc_done
+      MessageBox MB_YESNO|MB_ICONQUESTION "Microsoft VC++ Runtime (2015-2022 x64) seems missing.`r`nWhaleBox needs it to run.`r`n`r`nOpen the official Microsoft download page now?" IDYES open_vc IDNO vc_done
       open_vc:
         ExecShell "open" "https://aka.ms/vs/17/release/vc_redist.x64.exe"
     ${Else}
@@ -49,6 +49,6 @@
 !macro customUnInstall
   ; 静默模式(/S)下不弹窗,否则无人点击会卡死卸载流程
   ${IfNot} ${Silent}
-    MessageBox MB_OK|MB_ICONINFORMATION "HelloDeepseekHarness has been uninstalled.`r`nYour sessions and settings are kept in the user data folder."
+    MessageBox MB_OK|MB_ICONINFORMATION "WhaleBox has been uninstalled.`r`nYour sessions and settings are kept in the user data folder."
   ${EndIf}
 !macroend

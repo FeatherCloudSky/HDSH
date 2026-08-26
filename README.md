@@ -1,8 +1,8 @@
-# HelloDeepseekHarness（HDSH）
+# WhaleBox（HDSH）
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整运行时，无需任何前置安装，双击即用。
 
-本仓库提供 HelloDeepseekHarness 桌面版（非官方社区构建）的安装程序与使用文档。Electron 壳源码与构建配置位于 `package-app/`（内置运行时体积较大不入库，构建前按 `package-app/README.md` 说明本地准备）。
+本仓库提供 WhaleBox 桌面版（非官方社区构建）的安装程序与使用文档。Electron 壳源码与构建配置位于 `package-app/`（内置运行时体积较大不入库，构建前按 `package-app/README.md` 说明本地准备）。
 
 ## 特性
 
@@ -22,9 +22,9 @@
 
 ## 下载
 
-**最新版本：v1.4.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.4.0)）
+**最新版本：v1.5.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.5.0)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `HelloDeepseekHarness-Setup-1.4.0.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `WhaleBox-Setup-1.5.0.exe`。
 
 | 项 | 要求 |
 |---|---|
@@ -35,12 +35,12 @@
 
 ## 安装
 
-1. 双击 `HelloDeepseekHarness-Setup-1.4.0.exe`，按向导操作；
-2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\HelloDeepseekHarness`）；
+1. 双击 `WhaleBox-Setup-1.5.0.exe`，按向导操作；
+2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\WhaleBox`）；
 3. 向导自动创建桌面快捷方式与开始菜单项；
 4. 安装完成后自动启动应用。
 
-> 提示：安装前请先关闭正在运行的 HelloDeepseekHarness 窗口，避免程序文件被占用导致安装/升级失败。
+> 提示：安装前请先关闭正在运行的 WhaleBox 窗口，避免程序文件被占用导致安装/升级失败。
 
 > 提示：本安装包为社区构建，**未做代码签名**（无商业签名证书），Windows SmartScreen 可能提示"已保护你的电脑"，点击"更多信息 → 仍要运行"即可；个别杀毒软件可能误报，属未签名程序的常见现象。
 
@@ -52,8 +52,8 @@
 
 | 项 | 位置 |
 |---|---|
-| 用户数据（会话/配置/插件） | `%APPDATA%\HelloDeepseekHarness\dsh-home` |
-| 界面缓存（Chromium） | `%APPDATA%\HelloDeepseekHarness\user-data` |
+| 用户数据（会话/配置/插件） | `%APPDATA%\WhaleBox\dsh-home` |
+| 界面缓存（Chromium） | `%APPDATA%\WhaleBox\user-data` |
 | 服务端口 | `127.0.0.1:8898`（固定） |
 
 备份：直接复制 `dsh-home` 目录即可完整备份。

@@ -1,4 +1,4 @@
-// HelloDeepseekHarness 玻璃窗口壳 — 预加载脚本(沙箱内,内嵌样式)
+// WhaleBox 鲸盒 玻璃窗口壳 — 预加载脚本(沙箱内,内嵌样式)
 // 职责:向 WebUI 页面注入顶部玻璃横栏(左侧品牌、右侧悬浮胶囊按钮组),
 //       按钮真实控制窗口(经 IPC),外观采用毛玻璃质感样式。
 const { ipcRenderer, contextBridge } = require('electron');
@@ -290,9 +290,9 @@ const ICONS = {
 function buildTitlebar() {
   const bar = document.createElement('div');
   bar.id = TITLEBAR_ID;
-  bar.title = 'HelloDeepseekHarness — 拖拽此横栏可移动窗口,双击切换最大化';
+  bar.title = 'WhaleBox 鲸盒 — 拖拽此横栏可移动窗口,双击切换最大化';
   bar.innerHTML = `
-    <div class="dsh-lg-brand"><span class="dsh-lg-logo"><img src="${LOGO_DATA}" alt=""></span><span>HelloDeepseekHarness</span><span class="dsh-lg-unofficial">非官方</span></div>
+    <div class="dsh-lg-brand"><span class="dsh-lg-logo"><img src="${LOGO_DATA}" alt=""></span><span>WhaleBox 鲸盒</span><span class="dsh-lg-unofficial">非官方</span></div>
     <div class="dsh-lg-controls">
       <button class="dsh-lg-btn dsh-lg-min" title="最小化">${ICONS.minimize}</button>
       <button class="dsh-lg-btn dsh-lg-max" title="${isMaximized ? '还原' : '最大化'}">${isMaximized ? ICONS.restore : ICONS.maximize}</button>

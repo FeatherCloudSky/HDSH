@@ -1,7 +1,7 @@
 {
   "name": "dsh-update-check",
-  "version": "1.4.0",
-  "description": "HDSH 内置更新检测:设置→通用设置 一键检查并更新框架与 WebUI(分开显示版本号,一键完成全部更新)",
+  "version": "1.5.0",
+  "description": "WhaleBox 鲸盒 内置更新检测:设置→通用设置 一键检查并更新框架与 WebUI(分开显示版本号,一键完成全部更新)",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

@@ -1,4 +1,4 @@
-# HelloDeepseekHarness 源码工程
+# WhaleBox 源码工程
 
 Electron 壳 + electron-builder 打包配置。内置运行时（Node.js + dsh）体积较大且为第三方二进制，**不入库**，按下方说明自行准备。
 

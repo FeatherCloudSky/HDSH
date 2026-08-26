@@ -1,4 +1,4 @@
-// electron-builder config — HelloDeepseekHarness 1.0.0
+// electron-builder config — WhaleBox 鲸盒 1.5.0
 const path = require('path');
 
 // 本地 Electron 目录(避免重新下载)。发布源码时请勿硬编码本机路径:
@@ -7,7 +7,7 @@ const electronDist = process.env.ELECTRON_DIST || undefined;
 
 module.exports = {
   appId: 'io.github.feathercloudsky.hdsh',
-  productName: 'HelloDeepseekHarness',
+  productName: 'WhaleBox',
   copyright: 'Copyright (c) 2026 FeatherCloudSky',
   // 自动更新发布源:GitHub Releases(latest.yml + blockmap 由构建生成)
   publish: {
@@ -59,7 +59,7 @@ module.exports = {
       }
     ],
     icon: path.join(__dirname, '..', 'app', 'assets', 'deepseek.ico'),
-    executableName: 'HelloDeepseekHarness'
+    executableName: 'WhaleBox'
     // NOTE: signAndEditExecutable must stay enabled (default) so the whale
     // icon gets injected into the exe; winCodeSign comes from npmmirror
     // (see ELECTRON_BUILDER_BINARIES_MIRROR in build.bat)
@@ -71,10 +71,10 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
-    shortcutName: 'HelloDeepseekHarness',
-    uninstallDisplayName: 'HelloDeepseekHarness',
+    shortcutName: 'WhaleBox',
+    uninstallDisplayName: 'WhaleBox',
     language: 2052,
-    artifactName: 'HelloDeepseekHarness-Setup-${version}.${ext}',
+    artifactName: 'WhaleBox-Setup-${version}.${ext}',
     deleteAppDataOnUninstall: false,
     runAfterFinish: true,
     installerIcon: path.join(__dirname, '..', 'app', 'assets', 'deepseek.ico'),

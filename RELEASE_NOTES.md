@@ -1,4 +1,15 @@
-# HelloDeepseekHarness 1.4.0
+# WhaleBox 1.5.0
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.5.0 更新（2026-08-26）
+
+- **启动不再打开系统浏览器**：内置 dsh web 默认会用系统默认浏览器打开 WebUI；本应用由玻璃窗口内嵌显示，故启动服务时显式传入 `--no-open`，关闭外开浏览器（WebUI 仍在窗口内加载）。
+- **修复圆角外围深色直角**：`#root` 内容区外层的矩形 box-shadow 会填充到圆角外侧的方形角落，形成「圆角外围一圈深色直角」；已移除全部外层投影（明暗两套主题），仅保留内侧 1px 高光描边。
+
+---
+
+# WhaleBox 1.4.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -18,7 +29,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.3.1
+# WhaleBox 1.3.1
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -33,7 +44,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.3.0
+# WhaleBox 1.3.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -48,7 +59,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.2.0
+# WhaleBox 1.2.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -63,7 +74,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.1.0
+# WhaleBox 1.1.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -78,7 +89,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.0.3
+# WhaleBox 1.0.3
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -89,7 +100,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.0.2
+# WhaleBox 1.0.2
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -100,7 +111,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.0.1
+# WhaleBox 1.0.1
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
@@ -113,7 +124,7 @@
 
 ---
 
-# HelloDeepseekHarness 1.0.0
+# WhaleBox 1.0.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
 
