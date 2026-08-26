@@ -1,4 +1,4 @@
-// electron-builder config — WhaleBox 鲸盒 1.5.0
+// electron-builder config — WhaleBox 鲸盒 1.5.1
 const path = require('path');
 
 // 本地 Electron 目录(避免重新下载)。发布源码时请勿硬编码本机路径:

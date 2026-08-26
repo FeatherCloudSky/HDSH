@@ -1,7 +1,7 @@
 {
   "name": "whalebox",
   "productName": "WhaleBox",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "WhaleBox 鲸盒 — DeepSeek Harness WebUI 非官方桌面封装",
   "main": "main.js",
   "author": "FeatherCloudSky",

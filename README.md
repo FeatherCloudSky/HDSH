@@ -22,9 +22,9 @@
 
 ## 下载
 
-**最新版本：v1.5.0**（[更新说明](https://github.com/FeatherCloudSky/WhaleBox/releases/tag/ver1.5.0)）
+**最新版本：v1.5.1**（[更新说明](https://github.com/FeatherCloudSky/WhaleBox/releases/tag/ver1.5.1)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/WhaleBox/releases) 下载最新版 `WhaleBox-Setup-1.5.0.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/WhaleBox/releases) 下载最新版 `WhaleBox-Setup-1.5.1.exe`。
 
 | 项 | 要求 |
 |---|---|
@@ -35,7 +35,7 @@
 
 ## 安装
 
-1. 双击 `WhaleBox-Setup-1.5.0.exe`，按向导操作；
+1. 双击 `WhaleBox-Setup-1.5.1.exe`，按向导操作；
 2. 可自定义安装目录（默认 `%LOCALAPPDATA%\Programs\WhaleBox`）；
 3. 向导自动创建桌面快捷方式与开始菜单项；
 4. 安装完成后自动启动应用。

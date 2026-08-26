@@ -1,3 +1,13 @@
+# WhaleBox 1.5.1
+
+> 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
+
+## 1.5.1 更新（2026-08-26）
+
+- **修复升级/迁移后无法启动**：从旧品牌（HelloDeepseekHarness）迁移数据时，`profiles/node_modules` 下的真实目录（非符号链接）会导致 dsh 0.1.1+ 启动崩溃；迁移后自动清理，`startService()` 启动前额外检测并修复。
+
+---
+
 # WhaleBox 1.5.0
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整 Node.js 与 dsh 运行时，无需任何前置环境，双击即用。
