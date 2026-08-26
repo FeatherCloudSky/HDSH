@@ -15,7 +15,7 @@
 
 ## 1.4.0 更新（2026-08-25）
 
-- **统一更新检测**：设置 → 通用设置 的「更新检测」重构为单一组件——「一键检查更新」同时检查框架（HDSH Releases）与 WebUI（官方 npm）的新版本，**分行显示版本号**（框架：当前/最新；WebUI：当前/服务端/官方最新），检测到任一新版本都会提示
+- **统一更新检测**：设置 → 通用设置 的「更新检测」重构为单一组件——「一键检查更新」同时检查框架（WhaleBox Releases）与 WebUI（官方 npm）的新版本，**分行显示版本号**（框架：当前/最新；WebUI：当前/服务端/官方最新），检测到任一新版本都会提示
 - **一键更新**：发现更新后点「一键更新」自动完成全部操作，无需逐项处理：
   1. WebUI 与服务端不匹配时先自动修复（下载配套界面 → 原子替换 → 重启本地服务）
   2. 框架有新版本时自动下载安装包 → 校验 → 退出应用 → 静默安装（新框架自带配套新 WebUI）→ 完成后可重新启动应用
@@ -80,10 +80,10 @@
 
 ## 1.1.0 更新（2026-08-24）
 
-- **内置更新检测**：设置 → 通用设置 新增「更新检测」栏目，两个独立按钮分别检测 WebUI（官方 deepseek-ai/deepseek-harness 仓库）与本框架（FeatherCloudSky/HDSH 仓库）的新版本；发现新版本时会询问是否立即更新
+- **内置更新检测**：设置 → 通用设置 新增「更新检测」栏目，两个独立按钮分别检测 WebUI（官方 deepseek-ai/deepseek-harness 仓库）与本框架（FeatherCloudSky/WhaleBox 仓库）的新版本；发现新版本时会询问是否立即更新
   - WebUI 更新：打开官方仓库标签页查看最新版本（WebUI 组件随框架安装包分发）
   - 框架更新：自动下载最新安装包到「下载」文件夹并打开，关闭应用后运行安装程序即可升级
-  - 版本来源：WebUI 取官方 GitHub `dsh-v*` 标签（备用 npm `next` 标记）；框架取 HDSH Releases
+  - 版本来源：WebUI 取官方 GitHub `dsh-v*` 标签（备用 npm `next` 标记）；框架取 WhaleBox Releases
 - **实现方式**：Electron 主进程新增 `hdsh` IPC（当前版本读取 / 安装包下载 / 打开链接），preload 经 contextBridge 暴露为 `window.hdsh`；更新检测 UI 为随包客户端插件（`dsh-update-check`），经 `dsh web --patch` 组合覆盖挂入设置页
 - 源码工程 `package-app/` 同步更新：新增 `runtime-addons/dsh-update-check`（更新检测包）与 `app/hdsh-update-check.patch.yml`（组合覆盖）
 

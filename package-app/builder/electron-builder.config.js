@@ -6,14 +6,14 @@ const path = require('path');
 const electronDist = process.env.ELECTRON_DIST || undefined;
 
 module.exports = {
-  appId: 'io.github.feathercloudsky.hdsh',
+  appId: 'io.github.feathercloudsky.whalebox',
   productName: 'WhaleBox',
   copyright: 'Copyright (c) 2026 FeatherCloudSky',
   // 自动更新发布源:GitHub Releases(latest.yml + blockmap 由构建生成)
   publish: {
     provider: 'github',
     owner: 'FeatherCloudSky',
-    repo: 'HDSH'
+    repo: 'WhaleBox'
   },
   afterPack: path.join(__dirname, 'afterPack-icon.js'),
   directories: {

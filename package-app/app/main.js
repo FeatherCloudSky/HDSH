@@ -14,7 +14,7 @@ const webuiUpdate = require('./webui-update.js');
 
 const APP_NAME = 'WhaleBox';
 app.setName(APP_NAME);
-app.setAppUserModelId('WhaleBox');
+app.setAppUserModelId('io.github.feathercloudsky.whalebox');
 
 // 端口可配置(测试用;正式固定 8898)
 const PORT = Number(process.env.DSH_PORT || 8898);

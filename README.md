@@ -1,4 +1,4 @@
-# WhaleBox（HDSH）
+# WhaleBox（鲸盒）
 
 > 非官方 Windows 一键安装包：将 DeepSeek Harness（dsh）WebUI 封装为独立桌面应用，内置完整运行时，无需任何前置安装，双击即用。
 
@@ -22,9 +22,9 @@
 
 ## 下载
 
-**最新版本：v1.5.0**（[更新说明](https://github.com/FeatherCloudSky/HDSH/releases/tag/ver1.5.0)）
+**最新版本：v1.5.0**（[更新说明](https://github.com/FeatherCloudSky/WhaleBox/releases/tag/ver1.5.0)）
 
-前往 [Releases](https://github.com/FeatherCloudSky/HDSH/releases) 下载最新版 `WhaleBox-Setup-1.5.0.exe`。
+前往 [Releases](https://github.com/FeatherCloudSky/WhaleBox/releases) 下载最新版 `WhaleBox-Setup-1.5.0.exe`。
 
 | 项 | 要求 |
 |---|---|

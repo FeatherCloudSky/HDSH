@@ -188,7 +188,7 @@ window.__ModuleLoader__.load({
 			els.push(h("div", { className: "updchk-line" },
 				h("div", { className: "updchk-info" },
 					h("div", { className: "updchk-name" }, "框架(WhaleBox)+ WebUI(官方界面)"),
-					h("div", { className: "updchk-repo" }, "框架源:HDSH Releases · WebUI 源:官方 npm")
+					h("div", { className: "updchk-repo" }, "框架源:WhaleBox Releases · WebUI 源:官方 npm")
 				),
 				h("button", { className: "updchk-btn", disabled: busy, onClick: () => doCheckAll(setState) },
 					state.phase === "checking" ? "检查中…" : "一键检查更新")
@@ -203,7 +203,7 @@ window.__ModuleLoader__.load({
 					"正在检查框架与 WebUI 更新…"));
 			} else if (state.phase === "error") {
 				els.push(h("div", { className: "updchk-status updchk-err" }, "✗ " + (state.error || "更新失败")));
-				els.push(h("button", { className: "updchk-link", onClick: () => openRepo({ repoUrl: "https://github.com/FeatherCloudSky/HDSH/releases/latest", repoLabel: "HDSH 发布页" }) }, "打开 HDSH 发布页 ↗"));
+				els.push(h("button", { className: "updchk-link", onClick: () => openRepo({ repoUrl: "https://github.com/FeatherCloudSky/WhaleBox/releases/latest", repoLabel: "WhaleBox 发布页" }) }, "打开 WhaleBox 发布页 ↗"));
 			} else if (state.phase === "ready") {
 				const c = state.check || {};
 				const fw = c.framework || {};
