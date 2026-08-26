@@ -254,6 +254,19 @@ async function startService() {
   const home = DSH_HOME();
   try { fs.mkdirSync(home, { recursive: true }); } catch (_) {}
 
+  // 安全网:清理 profiles/node_modules 中的真实目录(dsh 0.1.1+ 要求符号链接,真实目录会导致启动崩溃)
+  try {
+    const nmDir = path.join(home, 'profiles', 'node_modules');
+    if (fs.existsSync(nmDir)) {
+      const hasRealDirs = fs.readdirSync(nmDir, { withFileTypes: true })
+        .some(d => d.isDirectory() && !(d.isSymbolicLink?.() || false));
+      if (hasRealDirs) {
+        fs.rmSync(nmDir, { recursive: true, force: true });
+        console.log('[svc] healed profiles/node_modules: removed real dirs for symlink rebuild');
+      }
+    }
+  } catch (_) {}
+
   // 启动自检:前端与服务端版本必须匹配,不匹配时从备份恢复(防止坏更新后界面打不开)
   ensureWebuiCompatible();
   // 内置更新检测:在 profile 回退 node_modules 建立包链接
@@ -356,6 +369,15 @@ function migrateOldAppData() {
     if (cp.status !== void 0 && cp.status < 8) {
       fs.writeFileSync(flagPath, OLD_APP_DATA);
       console.log('[migrate] appdata done');
+      // 迁移后清理 profiles/node_modules:旧版 dsh 用真实目录,dsh 0.1.1+ 要求符号链接,
+      // 真实目录会导致 ensureSymlink 报错、服务无法启动。删除整个 node_modules 让 dsh 重建。
+      try {
+        const badNm = path.join(root, 'dsh-home', 'profiles', 'node_modules');
+        if (fs.existsSync(badNm)) {
+          fs.rmSync(badNm, { recursive: true, force: true });
+          console.log('[migrate] cleaned profiles/node_modules for symlink rebuild');
+        }
+      } catch (_) {}
     }
   } catch (e) { console.error('[migrate] appdata failed: ' + e.message); }
 }
